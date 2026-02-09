@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
+import api from '../lib/api';
 import ExcelJS from 'exceljs';
-import { API_BASE_URL } from '../config/api';
 import {
   aggregateSummary,
   applyFilters,
@@ -35,7 +35,7 @@ const ExportData = () => {
     setMessage(null);
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/households?per_page=10000`);
+      const response = await api.get('/households', { params: { per_page: 10000 } });
       const households = response.data.data || [];
 
       if (format === 'json') {
@@ -494,9 +494,6 @@ const ExportData = () => {
           { width: 15 }, // Additional: HH using Iron-Fortified Rice
         ];
 
-        // Freeze header rows (rows 1-7)
-        worksheet.views = [{ state: 'frozen', ySplit: 7 }];
-
         // Generate buffer and download
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -523,7 +520,7 @@ const ExportData = () => {
     setExporting(true);
     setMessage(null);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/households?per_page=10000`);
+      const res = await api.get('/households', { params: { per_page: 10000 } });
       const list = res.data?.data ?? res.data ?? [];
       const households = Array.isArray(list) ? list : [];
       const filtered = applyFilters(households, {
@@ -592,7 +589,11 @@ const ExportData = () => {
       r7.getCell(4).value = s.basic.purokBlockStreet;
       r7.getCell(5).value = 'SURVEY PERIOD & YEAR';
       r7.getCell(6).value = s.basic.surveyPeriod || s.basic.surveyYear;
-      r7.eachCell((c) => { c.font = headerFont; c.border = thinBorder; });
+      r7.eachCell((c, colNumber) => {
+        c.font = headerFont;
+        c.border = thinBorder;
+        if (colNumber === 2 || colNumber === 4 || colNumber === 6) c.alignment = { ...c.alignment, horizontal: 'center' };
+      });
 
       const col1: [string, string | number][] = [
         ['BARANGAY NUTRITION SCHOLAR', s.basic.bns],
@@ -665,7 +666,7 @@ const ExportData = () => {
         row.eachCell((cell, colNumber) => {
           cell.border = thinBorder;
           cell.alignment = { vertical: 'middle', wrapText: true };
-          if (colNumber % 2 === 0) cell.alignment = { ...cell.alignment, horizontal: 'right' };
+          if (colNumber === 2 || colNumber === 4 || colNumber === 6) cell.alignment = { ...cell.alignment, horizontal: 'center' };
         });
       }
 
@@ -675,7 +676,6 @@ const ExportData = () => {
       ws.getColumn(4).width = 12;
       ws.getColumn(5).width = 42;
       ws.getColumn(6).width = 14;
-      ws.views = [{ state: 'frozen' as const, ySplit: 7 }];
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/api';
+import api from '../lib/api';
 import './Dashboard.css';
 
 interface BarangayData {
@@ -25,7 +24,7 @@ const Dashboard = () => {
     // Fetch dashboard statistics from records data
     const fetchStats = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/households?per_page=10000`);
+        const response = await api.get('/households', { params: { per_page: 10000 } });
         // Laravel pagination: response.data.data = items, response.data.total = total count
         const households = response.data?.data ?? response.data ?? [];
         const totalEncoded = response.data?.total ?? (Array.isArray(households) ? households.length : 0);

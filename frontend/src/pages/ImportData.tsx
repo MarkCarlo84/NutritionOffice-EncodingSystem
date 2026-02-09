@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import ExcelJS from 'exceljs';
-import { API_BASE_URL } from '../config/api';
+import api from '../lib/api';
 import './ImportData.css';
 
 const ImportData = () => {
@@ -350,7 +350,7 @@ const ImportData = () => {
         const formData = new FormData();
         formData.append('file', file);
         
-        const response = await axios.post(`${API_BASE_URL}/api/households/import`, formData, {
+        const response = await api.post('/households/import', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -382,7 +382,7 @@ const ImportData = () => {
       }
 
       // Send parsed data to backend
-      const response = await axios.post(`${API_BASE_URL}/api/households/import`, {
+      const response = await api.post('/households/import', {
         households: households
       }, {
         headers: {
@@ -422,136 +422,129 @@ const ImportData = () => {
   };
 
   const downloadTemplate = async () => {
+    // Same format as Export BNS Form: rows 1–7, columns A–AH (1–34) only
     const thinBorder = {
       top: { style: 'thin' as const },
       left: { style: 'thin' as const },
       bottom: { style: 'thin' as const },
       right: { style: 'thin' as const },
     };
-    const sc = (formCol: number) => formToSheet(formCol, BNS_FORM_COLS_35) || formCol; // form -> sheet (1-35, no AI/AK)
-    const applyBorders = (row: ExcelJS.Row, maxCol: number = 35) => {
-      for (let c = 1; c <= maxCol; c++) row.getCell(c).border = thinBorder;
-    };
-    // Template has 35 columns (no C, E, AI, AK). Sheet col 1=A, 2=B, ... 35=AI removed so last is 35.
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('BNS FORM 1A', { properties: { defaultRowHeight: 18 } });
+    const worksheet = workbook.addWorksheet('Household Data', { properties: { defaultRowHeight: 18 } });
 
-    // Row 1: Purok/Sitio (sheet 1-8 merged), Municipality (sheet 9-20 merged)
-    const r1 = worksheet.addRow([]);
-    r1.getCell(1).value = 'Purok / Sitio:';
-    r1.getCell(9).value = 'Municipality:';
-    worksheet.mergeCells(1, 1, 1, 8);
-    worksheet.mergeCells(1, 9, 1, 19);
-    applyBorders(r1, 35);
+    // Row 1: BNS Form No. 1A
+    const titleRow1 = worksheet.addRow(['BNS Form No. 1A']);
+    titleRow1.getCell(1).font = { bold: true, size: 14 };
+    titleRow1.getCell(1).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(1, 1, 1, 34);
 
-    // Row 2: Barangay, Province
-    const r2 = worksheet.addRow([]);
-    r2.getCell(1).value = 'Barangay:';
-    r2.getCell(9).value = 'Province:';
-    worksheet.mergeCells(2, 1, 2, 8);
-    worksheet.mergeCells(2, 9, 2, 19);
-    applyBorders(r2, 35);
+    const titleRow2 = worksheet.addRow(['Philippine Plan of Action for Nutrition']);
+    titleRow2.getCell(1).font = { bold: true, size: 12 };
+    titleRow2.getCell(1).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(2, 1, 2, 34);
 
-    const r3 = worksheet.addRow([]);
-    applyBorders(r3);
-    const r4 = worksheet.addRow([]);
-    applyBorders(r4);
+    const titleRow3 = worksheet.addRow(['HOUSEHOLD PROFILE']);
+    titleRow3.getCell(1).font = { bold: true, size: 12 };
+    titleRow3.getCell(1).alignment = { horizontal: 'center' };
+    worksheet.mergeCells(3, 1, 3, 34);
 
-    // Row 5: "Check if" in AG (33) and AH (34) only; no merge; AI (35) empty
-    const r5 = worksheet.addRow([]);
-    r5.getCell(sc(6)).value = 'NHTS Household';
-    r5.getCell(sc(7)).value = 'Indigenous Group';
-    r5.getCell(sc(33)).value = 'Fill in:';
-    r5.getCell(33).value = 'Check if';  // AG
-    r5.getCell(34).value = 'Check if';  // AH (column AI = 35 left empty)
-    applyBorders(r5, 35);
+    worksheet.addRow([]);
 
-    // Row 6: Main headers (form -> sheet via sc)
-    const r6 = worksheet.addRow([]);
-    r6.getCell(sc(1)).value = 'HH No.';
-    r6.getCell(sc(2)).value = 'No. of family living in the house';
-    r6.getCell(sc(4)).value = '      Number of HH members';
-    r6.getCell(sc(6)).value = '1-NHTS 4Ps   2-NHTS   Non-4Ps   3-Non-NHTS';
-    r6.getCell(sc(7)).value = '1-IP   2-Non-IP';
-    r6.getCell(sc(8)).value = 'Newborn (0-28 days)';
-    r6.getCell(sc(10)).value = 'Infant (29 days - 11 months)';
-    r6.getCell(sc(12)).value = 'Under five (1-4 y.o)';
-    r6.getCell(sc(14)).value = 'Children 5-9 y.o';
-    r6.getCell(sc(16)).value = 'Adolescence (10-19 y.o)';
-    r6.getCell(sc(18)).value = 'Pregnant';
-    r6.getCell(sc(19)).value = 'Adolescent Pregnant';
-    r6.getCell(sc(20)).value = 'Post-Partum (PP)';
-    r6.getCell(sc(21)).value = '15-49 y.o not pregnant & non PP';
-    r6.getCell(sc(22)).value = 'Adult 20-59 y.o.';
-    r6.getCell(sc(24)).value = 'Senior Citizens';
-    r6.getCell(sc(26)).value = 'Person with Disabilities';
-    r6.getCell(sc(28)).value = 'Name of Father (Fa) and Mother (Mo); Caregiver (Ca)';
-    r6.getCell(sc(29)).value = 'Occupation';
-    r6.getCell(sc(30)).value = 'Educational Attainment';
-    r6.getCell(sc(33)).value = 'Toilet Type (1, 2, 3, 4)';
-    r6.getCell(sc(34)).value = 'Water Source (1, 2)';
-    // Form 35 (Food Production) = column AI removed
-    r6.getCell(sc(31)).value = 'Couple Practicing Family Planning';
-    r6.getCell(sc(36)).value = 'HH using Iodized Salt';
-    r6.getCell(sc(38)).value = 'HH using Iron Fortified Rice';
-    r6.font = { bold: true, size: 9 };
-    r6.alignment = { vertical: 'middle', wrapText: true };
-    applyBorders(r6, 35);
+    // Row 5: Main header row (C1–C34)
+    const mainHeaderRow = worksheet.addRow([]);
+    mainHeaderRow.getCell(1).value = 'HH\nNo.';
+    mainHeaderRow.getCell(2).value = 'No. of\nfamily\nliving in\nthe house';
+    mainHeaderRow.getCell(3).value = 'Number\nof HH\nmembers';
+    mainHeaderRow.getCell(4).value = 'NHTS\nHousehold';
+    mainHeaderRow.getCell(5).value = 'Indigenous\nGroup';
+    worksheet.mergeCells(5, 6, 5, 7);
+    mainHeaderRow.getCell(6).value = 'Newborn\n(0-28 days)';
+    worksheet.mergeCells(5, 8, 5, 9);
+    mainHeaderRow.getCell(8).value = 'Infant\n(29 days-\n11 months)';
+    worksheet.mergeCells(5, 10, 5, 11);
+    mainHeaderRow.getCell(10).value = 'Under-five\n(1-4 years\nold)';
+    worksheet.mergeCells(5, 12, 5, 13);
+    mainHeaderRow.getCell(12).value = 'Children\n5-9 y.o.';
+    worksheet.mergeCells(5, 14, 5, 15);
+    mainHeaderRow.getCell(14).value = 'Adolescence\n(10-19 y.o.)';
+    mainHeaderRow.getCell(16).value = 'Pregnant';
+    mainHeaderRow.getCell(17).value = 'Adolescent\nPregnant';
+    mainHeaderRow.getCell(18).value = 'Post-\nPartum\n(PP)';
+    mainHeaderRow.getCell(19).value = '15-49 y.o.\nnot pregnant\n& non PP';
+    worksheet.mergeCells(5, 20, 5, 21);
+    mainHeaderRow.getCell(20).value = 'Adult\n20-59 y.o.';
+    worksheet.mergeCells(5, 22, 5, 23);
+    mainHeaderRow.getCell(22).value = 'Senior\nCitizens';
+    worksheet.mergeCells(5, 24, 5, 25);
+    mainHeaderRow.getCell(24).value = 'Person\nWith\nDisability';
+    mainHeaderRow.getCell(26).value = 'Name of\nFather\n(Fa)';
+    mainHeaderRow.getCell(27).value = 'Name of\nMother\n(Mo)';
+    mainHeaderRow.getCell(28).value = 'Name of\nCaregiver\n(Ca)';
+    mainHeaderRow.getCell(29).value = 'Occupation\n(Fa)';
+    mainHeaderRow.getCell(30).value = 'Occupation\n(Mo)';
+    mainHeaderRow.getCell(31).value = 'Occupation\n(Ca)';
+    mainHeaderRow.getCell(32).value = 'Educational\nAttainment\n(Fa)';
+    mainHeaderRow.getCell(33).value = 'Educational\nAttainment\n(Mo)';
+    mainHeaderRow.getCell(34).value = 'Educational\nAttainment\n(Ca)';
+    mainHeaderRow.font = { bold: true, size: 9 };
+    mainHeaderRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    mainHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+    mainHeaderRow.height = 60;
+    for (let c = 1; c <= 34; c++) mainHeaderRow.getCell(c).border = thinBorder;
 
-    // Row 7
-    const r7 = worksheet.addRow([]);
-    r7.getCell(sc(8)).value = 'M';
-    r7.getCell(sc(9)).value = 'F';
-    r7.getCell(sc(10)).value = 'M';
-    r7.getCell(sc(11)).value = 'F';
-    r7.getCell(sc(12)).value = 'M';
-    r7.getCell(sc(13)).value = 'F';
-    r7.getCell(sc(14)).value = 'M';
-    r7.getCell(sc(15)).value = 'F';
-    r7.getCell(sc(16)).value = 'M';
-    r7.getCell(sc(17)).value = 'F';
-    r7.getCell(sc(21)).value = 'F';
-    r7.getCell(sc(22)).value = 'M';
-    r7.getCell(sc(23)).value = 'F';
-    r7.getCell(sc(24)).value = 'M';
-    r7.getCell(sc(25)).value = 'F';
-    r7.getCell(sc(26)).value = 'M';
-    r7.getCell(sc(27)).value = 'F';
-    // C29–C30 (Occupation, Educational Attainment): already in row 6
-    // C31, C36, C38 (Couple Practicing FP, Iodized Salt, Iron Rice): moved to row 6
-    r7.font = { bold: true, size: 9 };
-    r7.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    applyBorders(r7, 35);
+    // Row 6: M/F subheaders
+    const subHeaderRow = worksheet.addRow([]);
+    subHeaderRow.getCell(1).value = 'C1';
+    subHeaderRow.getCell(2).value = 'C2';
+    subHeaderRow.getCell(3).value = 'C3';
+    subHeaderRow.getCell(4).value = 'C4';
+    subHeaderRow.getCell(5).value = 'C5';
+    subHeaderRow.getCell(6).value = 'M';
+    subHeaderRow.getCell(7).value = 'F';
+    subHeaderRow.getCell(8).value = 'M';
+    subHeaderRow.getCell(9).value = 'F';
+    subHeaderRow.getCell(10).value = 'M';
+    subHeaderRow.getCell(11).value = 'F';
+    subHeaderRow.getCell(12).value = 'M';
+    subHeaderRow.getCell(13).value = 'F';
+    subHeaderRow.getCell(14).value = 'M';
+    subHeaderRow.getCell(15).value = 'F';
+    subHeaderRow.getCell(16).value = 'F';
+    subHeaderRow.getCell(17).value = 'F';
+    subHeaderRow.getCell(18).value = 'F';
+    subHeaderRow.getCell(19).value = 'F';
+    subHeaderRow.getCell(20).value = 'M';
+    subHeaderRow.getCell(21).value = 'F';
+    subHeaderRow.getCell(22).value = 'M';
+    subHeaderRow.getCell(23).value = 'F';
+    subHeaderRow.getCell(24).value = 'M';
+    subHeaderRow.getCell(25).value = 'F';
+    subHeaderRow.getCell(26).value = 'C26';
+    subHeaderRow.getCell(27).value = 'C27';
+    subHeaderRow.getCell(28).value = 'C28';
+    subHeaderRow.getCell(29).value = 'C29';
+    subHeaderRow.getCell(30).value = 'C30';
+    subHeaderRow.getCell(31).value = 'C31';
+    subHeaderRow.getCell(32).value = 'C32';
+    subHeaderRow.getCell(33).value = 'C33';
+    subHeaderRow.getCell(34).value = 'C34';
+    subHeaderRow.font = { bold: true, size: 9 };
+    subHeaderRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    subHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+    subHeaderRow.height = 25;
+    for (let c = 1; c <= 34; c++) subHeaderRow.getCell(c).border = thinBorder;
 
-    // Rows 8-10: (Fa), (Mo), (Ca) in Name column
-    const r8 = worksheet.addRow([]);
-    r8.getCell(sc(28)).value = '(Fa)';
-    applyBorders(r8, 35);
-    const r9 = worksheet.addRow([]);
-    r9.getCell(sc(28)).value = '(Mo)';
-    applyBorders(r9, 35);
-    const r10 = worksheet.addRow([]);
-    r10.getCell(sc(28)).value = '(Ca)';
-    applyBorders(r10, 35);
+    // Row 7: empty header row (A–AH) for consistency with BNS form 7-row header
+    const row7 = worksheet.addRow([]);
+    row7.font = { bold: true, size: 9 };
+    row7.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    row7.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+    row7.height = 25;
+    for (let c = 1; c <= 34; c++) row7.getCell(c).border = thinBorder;
 
-    [worksheet.addRow([]), worksheet.addRow([]), worksheet.addRow([])].forEach((row) => applyBorders(row, 35));
-
-    // Column widths from content (35 columns)
-    const rowCount = worksheet.rowCount || 13;
-    const minWidth = 6;
-    const maxWidth = 50;
-    for (let c = 1; c <= 35; c++) {
-      let maxLen = 0;
-      for (let r = 1; r <= rowCount; r++) {
-        const row = worksheet.getRow(r);
-        const cell = row.getCell(c);
-        const val = cell.value;
-        const s = val == null ? '' : String(val).trim();
-        if (s.length > maxLen) maxLen = s.length;
-      }
-      const width = Math.max(minWidth, Math.min(maxLen + 2, maxWidth));
-      worksheet.getColumn(c).width = width;
-    }
+    // Column widths (A–AH)
+    const colWidths = [8, 10, 10, 12, 12, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 8, 10, 8, 14, 10, 10, 10, 10, 10, 10, 18, 18, 18, 12, 12, 12, 15, 15, 15];
+    for (let c = 1; c <= 34; c++) worksheet.getColumn(c).width = colWidths[c - 1] ?? 12;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

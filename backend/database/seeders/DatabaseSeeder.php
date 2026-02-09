@@ -18,8 +18,9 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Nutrition Office Admin',
+            'email' => 'admin@nutrition.cabuyao.gov.ph',
+            'password' => \Illuminate\Support\Facades\Hash::make('password'),
         ]);
 
         $this->call(HouseholdSeeder::class);

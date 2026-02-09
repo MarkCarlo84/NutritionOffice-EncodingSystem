@@ -10,40 +10,41 @@
 .form-header h1 {
   font-size: 28px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 8px 0;
 }
 
 .form-header p {
-  font-size: 14px;
-  color: #666;
+  font-size: 15px;
+  color: var(--color-text-muted);
   margin: 0;
 }
 
 .message {
-  padding: 12px 16px;
-  border-radius: 6px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
   margin-bottom: 24px;
   font-size: 14px;
 }
 
 .message.success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+  background-color: var(--color-success-bg);
+  color: var(--color-success-text);
+  border: 1px solid #A7F3D0;
 }
 
 .message.error {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+  background-color: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-border);
 }
 
 .household-form {
-  background-color: #f5f5e6;
+  background-color: var(--color-surface);
   padding: 32px;
-  border-radius: 8px;
-  box-shadow: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border-neutral);
 }
 
 .form-section {
@@ -58,10 +59,10 @@
 .section-heading {
   font-size: 18px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 20px 0;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #333;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--color-primary);
 }
 
 .section-heading-no-line {
@@ -72,7 +73,7 @@
 .form-section h3 {
   font-size: 16px;
   font-weight: 500;
-  color: #444;
+  color: var(--color-text-muted);
   margin: 0 0 12px 0;
 }
 
@@ -114,7 +115,7 @@
 .form-group label {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--color-text);
   margin-bottom: 6px;
   display: block;
 }
@@ -123,25 +124,27 @@
 .form-group input[type="number"],
 .form-group select {
   padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius);
   font-size: 14px;
   font-family: inherit;
-  background-color: #e8e8e8;
-  color: #333;
+  background-color: var(--color-surface);
+  color: var(--color-text);
   width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-group input[type="text"]:focus,
 .form-group input[type="number"]:focus,
 .form-group select:focus {
   outline: none;
-  background-color: #fff;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .form-group input[type="checkbox"] {
   margin-right: 8px;
+  accent-color: var(--color-primary);
 }
 
 .age-grid {
@@ -160,7 +163,7 @@
 .age-group h3 {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 8px 0;
 }
 
@@ -182,7 +185,7 @@
 .pwd-section {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border-neutral);
 }
 
 .member-section {
@@ -192,10 +195,10 @@
 .member-section-heading {
   font-size: 16px;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 16px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid #333;
+  border-bottom: 2px solid var(--color-primary);
 }
 
 .member-fields {
@@ -210,18 +213,22 @@
 }
 
 .remove-btn {
-  padding: 6px 12px;
-  background-color: #dc3545;
+  padding: 8px 14px;
+  background-color: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.1s;
 }
 
 .remove-btn:hover {
-  background-color: #c82333;
+  background-color: var(--color-primary-hover);
+}
+
+.remove-btn:active {
+  transform: scale(0.98);
 }
 
 .add-member-buttons-group {
@@ -232,23 +239,23 @@
 
 .add-member-btn {
   padding: 12px 24px;
-  background-color: #4a90e2;
+  background-color: var(--color-primary);
   color: white;
   border: none;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.1s;
   white-space: nowrap;
   flex: 1;
 }
 
 .add-member-btn:first-child {
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 .add-member-btn:last-child {
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 .add-member-btn:not(:first-child):not(:last-child) {
@@ -262,13 +269,17 @@
 }
 
 .add-member-btn:hover:not(:disabled) {
-  background-color: #357abd;
+  background-color: var(--color-primary-hover);
+}
+
+.add-member-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .add-member-btn:disabled,
 .add-member-btn.active {
-  background-color: #357abd;
-  opacity: 0.7;
+  background-color: var(--color-primary-hover);
+  opacity: 0.9;
   cursor: not-allowed;
 }
 
@@ -288,7 +299,7 @@
 .radio-group-label {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--color-text);
   white-space: nowrap;
 }
 
@@ -303,7 +314,7 @@
   gap: 6px;
   cursor: pointer;
   font-size: 14px;
-  color: #333;
+  color: var(--color-text);
 }
 
 .radio-option input[type="radio"] {
@@ -311,7 +322,7 @@
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: #333;
+  accent-color: var(--color-primary);
 }
 
 .radio-option span {
@@ -326,42 +337,49 @@
 }
 
 .submit-btn {
-  padding: 10px 24px;
-  background-color: #4a4a4a;
+  padding: 12px 28px;
+  background-color: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: var(--radius);
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.1s;
 }
 
 .submit-btn:hover:not(:disabled) {
-  background-color: #333;
+  background-color: var(--color-primary-hover);
+}
+
+.submit-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .submit-btn:disabled {
-  background-color: #999;
+  background-color: var(--color-text-muted);
   cursor: not-allowed;
+  opacity: 0.8;
 }
 
 .reset-btn,
 .cancel-btn {
-  padding: 10px 24px;
-  background-color: #d0d0d0;
-  color: #333;
-  border: none;
-  border-radius: 8px;
+  padding: 12px 24px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-border-neutral);
+  border-radius: var(--radius);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
 .reset-btn:hover,
 .cancel-btn:hover {
-  background-color: #b8b8b8;
+  background-color: var(--color-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .form-group.full-width {
