@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import api from '../lib/api';
 import './EncodeRecord.css';
 
 const BARANGAYS = [
@@ -28,6 +29,8 @@ interface HouseholdMember {
 }
 
 const EncodeRecord = () => {
+  const { id: editId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     // Location
     purok_sito: '',
@@ -100,6 +103,93 @@ const EncodeRecord = () => {
   ]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+
+  // Load household when editing
+  useEffect(() => {
+    if (!editId) return;
+    setLoading(true);
+    api.get(`/households/${editId}`)
+      .then(({ data }) => {
+        const h = data;
+        setFormData({
+          purok_sito: h.purok_sito ?? '',
+          barangay: h.barangay ?? '',
+          municipality_city: h.municipality_city ?? 'Cabuyao',
+          province: h.province ?? 'Laguna',
+          household_number: h.household_number ?? '',
+          family_living_in_house: Number(h.family_living_in_house) || 0,
+          number_of_members: Number(h.number_of_members) || 0,
+          nhts_household_group: h.nhts_household_group != null ? Number(h.nhts_household_group) : null,
+          indigenous_group: h.indigenous_group != null ? Number(h.indigenous_group) : null,
+          newborn_male: Number(h.newborn_male) || 0,
+          newborn_female: Number(h.newborn_female) || 0,
+          infant_male: Number(h.infant_male) || 0,
+          infant_female: Number(h.infant_female) || 0,
+          under_five_male: Number(h.under_five_male) || 0,
+          under_five_female: Number(h.under_five_female) || 0,
+          children_male: Number(h.children_male) || 0,
+          children_female: Number(h.children_female) || 0,
+          adolescence_male: Number(h.adolescence_male) || 0,
+          adolescence_female: Number(h.adolescence_female) || 0,
+          pregnant: Number(h.pregnant) || 0,
+          adolescent_pregnant: Number(h.adolescent_pregnant) || 0,
+          post_partum: Number(h.post_partum) || 0,
+          women_15_49_not_pregnant: Number(h.women_15_49_not_pregnant) || 0,
+          adult_male: Number(h.adult_male) || 0,
+          adult_female: Number(h.adult_female) || 0,
+          senior_citizen_male: Number(h.senior_citizen_male) || 0,
+          senior_citizen_female: Number(h.senior_citizen_female) || 0,
+          pwd_male: Number(h.pwd_male) || 0,
+          pwd_female: Number(h.pwd_female) || 0,
+          toilet_type: h.toilet_type != null ? Number(h.toilet_type) : null,
+          water_source: h.water_source != null ? Number(h.water_source) : null,
+          food_production_activity: h.food_production_activity ?? null,
+          couple_practicing_family_planning: h.couple_practicing_family_planning ?? null,
+          using_iodized_salt: h.using_iodized_salt ?? null,
+          using_iron_fortified_rice: h.using_iron_fortified_rice ?? null,
+        });
+        const m = h.members ?? [];
+        const roles: ('father' | 'mother' | 'caregiver')[] = ['father', 'mother', 'caregiver'];
+        setMembers(roles.map((role) => {
+          const mem = m.find((x: any) => (x.role || '').toLowerCase() === role);
+          return {
+            id: mem?.id,
+            name: mem?.name ?? '',
+            role,
+            occupation: mem?.occupation != null ? Number(mem.occupation) : null,
+            educational_attainment: mem?.educational_attainment ?? null,
+            practicing_family_planning: !!mem?.practicing_family_planning,
+          };
+        }));
+      })
+      .catch(() => setMessage({ type: 'error', text: 'Failed to load household.' }))
+      .finally(() => setLoading(false));
+  }, [editId]);
+
+  // Check duplicate HH No. + barangay (debounced)
+  useEffect(() => {
+    if (!formData.household_number.trim() || !formData.barangay.trim()) {
+      setDuplicateWarning(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      setCheckingDuplicate(true);
+      const params: Record<string, string> = {
+        household_number: formData.household_number.trim(),
+        barangay: formData.barangay.trim(),
+      };
+      if (editId) params.exclude_id = editId;
+      api.get('/households/check-duplicate', { params })
+        .then(({ data }) => {
+          setDuplicateWarning(data.duplicate ? (data.message || 'Duplicate HH No. in this barangay.') : null);
+        })
+        .catch(() => setDuplicateWarning(null))
+        .finally(() => setCheckingDuplicate(false));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formData.household_number, formData.barangay, editId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -211,91 +301,83 @@ const EncodeRecord = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (duplicateWarning) {
+      setMessage({ type: 'error', text: 'Please fix duplicate HH No. in this barangay before saving.' });
+      return;
+    }
     setLoading(true);
     setMessage(null);
 
     try {
-      // Convert radio button values to booleans for API
       const submitData = {
         ...formData,
         couple_practicing_family_planning: formData.couple_practicing_family_planning === true,
         using_iodized_salt: formData.using_iodized_salt === true,
         using_iron_fortified_rice: formData.using_iron_fortified_rice === true,
         members: members.filter(m => m.name.trim() !== '').map(m => ({
-          ...m,
+          ...(m.id ? { id: m.id } : {}),
+          name: m.name,
+          role: m.role,
+          occupation: m.occupation,
+          educational_attainment: m.educational_attainment,
           practicing_family_planning: m.practicing_family_planning,
-        })).filter(m => m.name.trim() !== ''),
+        })),
       };
-      
-      await axios.post('http://localhost:8000/api/households', submitData);
-      
-      setMessage({ type: 'success', text: 'Household record encoded successfully!' });
-      // Reset form
-      setFormData({
-        purok_sito: '',
-        barangay: '',
-        municipality_city: 'Cabuyao',
-        province: 'Laguna',
-        household_number: '',
-        family_living_in_house: 0,
-        number_of_members: 0,
-        nhts_household_group: null,
-        indigenous_group: null,
-        newborn_male: 0,
-        newborn_female: 0,
-        infant_male: 0,
-        infant_female: 0,
-        under_five_male: 0,
-        under_five_female: 0,
-        children_male: 0,
-        children_female: 0,
-        adolescence_male: 0,
-        adolescence_female: 0,
-        pregnant: 0,
-        adolescent_pregnant: 0,
-        post_partum: 0,
-        women_15_49_not_pregnant: 0,
-        adult_male: 0,
-        adult_female: 0,
-        senior_citizen_male: 0,
-        senior_citizen_female: 0,
-        pwd_male: 0,
-        pwd_female: 0,
-        toilet_type: null,
-        water_source: null,
-        food_production_activity: null,
-        couple_practicing_family_planning: null,
-        using_iodized_salt: null,
-        using_iron_fortified_rice: null,
-      });
-      setMembers([
-        {
-          name: '',
-          role: 'father',
-          occupation: null,
-          educational_attainment: null,
-          practicing_family_planning: false,
-        },
-        {
-          name: '',
-          role: 'mother',
-          occupation: null,
-          educational_attainment: null,
-          practicing_family_planning: false,
-        },
-        {
-          name: '',
-          role: 'caregiver',
-          occupation: null,
-          educational_attainment: null,
-          practicing_family_planning: false,
-        },
-      ]);
+
+      if (editId) {
+        await api.put(`/households/${editId}`, submitData);
+        setMessage({ type: 'success', text: 'Household record updated successfully!' });
+        setTimeout(() => navigate('/household-records'), 1500);
+      } else {
+        await api.post('/households', submitData);
+        setMessage({ type: 'success', text: 'Household record encoded successfully!' });
+        setFormData({
+          purok_sito: '',
+          barangay: '',
+          municipality_city: 'Cabuyao',
+          province: 'Laguna',
+          household_number: '',
+          family_living_in_house: 0,
+          number_of_members: 0,
+          nhts_household_group: null,
+          indigenous_group: null,
+          newborn_male: 0,
+          newborn_female: 0,
+          infant_male: 0,
+          infant_female: 0,
+          under_five_male: 0,
+          under_five_female: 0,
+          children_male: 0,
+          children_female: 0,
+          adolescence_male: 0,
+          adolescence_female: 0,
+          pregnant: 0,
+          adolescent_pregnant: 0,
+          post_partum: 0,
+          women_15_49_not_pregnant: 0,
+          adult_male: 0,
+          adult_female: 0,
+          senior_citizen_male: 0,
+          senior_citizen_female: 0,
+          pwd_male: 0,
+          pwd_female: 0,
+          toilet_type: null,
+          water_source: null,
+          food_production_activity: null,
+          couple_practicing_family_planning: null,
+          using_iodized_salt: null,
+          using_iron_fortified_rice: null,
+        });
+        setMembers([
+          { name: '', role: 'father', occupation: null, educational_attainment: null, practicing_family_planning: false },
+          { name: '', role: 'mother', occupation: null, educational_attainment: null, practicing_family_planning: false },
+          { name: '', role: 'caregiver', occupation: null, educational_attainment: null, practicing_family_planning: false },
+        ]);
+      }
     } catch (error: any) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.message || 'Error encoding household record' 
-      });
+      const err = error.response?.data;
+      const msg = err?.message || err?.errors?.household_number?.[0] || 'Error encoding household record';
+      setMessage({ type: 'error', text: msg });
     } finally {
       setLoading(false);
     }
@@ -304,13 +386,19 @@ const EncodeRecord = () => {
   return (
     <div className="encode-record">
       <div className="form-header">
-        <h1>BNS Form No. 1A - HOUSEHOLD PROFILE</h1>
-        <p>Philippines Plan of Action for Nutrition | Edited Date</p>
+        <h1>BNS Form No. 1A - HOUSEHOLD PROFILE {editId ? '(Edit)' : ''}</h1>
+        <p>Philippines Plan of Action for Nutrition {editId ? `· Editing HH record` : '| Encode new record'}</p>
       </div>
 
       {message && (
         <div className={`message ${message.type}`}>
           {message.text}
+        </div>
+      )}
+
+      {duplicateWarning && (
+        <div className="message error">
+          {checkingDuplicate ? 'Checking...' : duplicateWarning}
         </div>
       )}
 

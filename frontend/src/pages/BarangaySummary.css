@@ -5,7 +5,7 @@
 .barangay-summary.loading {
   text-align: center;
   padding: 48px;
-  color: #666;
+  color: var(--color-text-muted);
 }
 
 .summary-header {
@@ -15,39 +15,40 @@
 .summary-header h1 {
   font-size: 24px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 8px 0;
 }
 
 .summary-header p {
-  font-size: 13px;
-  color: #555;
+  font-size: 14px;
+  color: var(--color-text-muted);
   margin: 0 0 16px 0;
 }
 
 .summary-data-source {
-  font-size: 13px;
-  color: #444;
-  background: #e8f4f8;
-  border-left: 4px solid #0d6efd;
-  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-primary-light);
+  border-left: 4px solid var(--color-primary);
+  padding: 14px 16px;
   margin: 0 0 20px 0;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   line-height: 1.5;
 }
 
 .summary-filters {
   margin-top: 20px;
-  padding: 16px 20px;
-  background: #f8f8f8;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  padding: 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .summary-filters h3 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 14px 0;
 }
 
@@ -60,28 +61,30 @@
 .filter-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .filter-field label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  color: #555;
+  color: var(--color-text-muted);
 }
 
 .filter-field input,
 .filter-field select {
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .filter-field input:focus,
 .filter-field select:focus {
   outline: none;
-  border-color: #888;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .survey-summary-form {
@@ -91,20 +94,20 @@
 }
 
 .summary-section {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-  padding: 20px 24px;
-  border: 1px solid #e8e8e8;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 24px;
+  border: 1px solid var(--color-border-neutral);
 }
 
 .summary-section h2 {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 16px 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--color-primary-light);
 }
 
 .summary-grid {
@@ -144,24 +147,24 @@
 .summary-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .summary-field label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  color: #555;
+  color: var(--color-text-muted);
 }
 
 .summary-value {
   font-size: 15px;
   font-weight: 600;
-  color: #222;
-  padding: 8px 10px;
-  background: #f5f5f5;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
-  min-height: 36px;
+  color: var(--color-text);
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-neutral);
+  min-height: 40px;
   display: flex;
   align-items: center;
 }

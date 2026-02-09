@@ -1,5 +1,6 @@
-/* Global app styles */
+/* Global app styles – red & white theme */
 .App {
   width: 100%;
   min-height: 100vh;
+  background-color: var(--color-bg);
 }

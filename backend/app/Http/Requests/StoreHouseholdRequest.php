@@ -29,8 +29,15 @@ class StoreHouseholdRequest extends FormRequest
             'municipality_city' => ['nullable', 'string', 'max:255'],
             'province' => ['nullable', 'string', 'max:255'],
             
-            // Household Identification
-            'household_number' => ['required', 'string', 'max:255', 'unique:households,household_number'],
+            // Household Identification (duplicate = same HH No. + same barangay)
+            'household_number' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('households')->where(function ($query) {
+                    return $query->where('barangay', $this->input('barangay'));
+                }),
+            ],
             'family_living_in_house' => ['nullable', 'integer', 'min:0'],
             'number_of_members' => ['nullable', 'integer', 'min:0'],
             'nhts_household_group' => ['nullable', 'integer', Rule::in([1, 2, 3])], // 1-NHTS 4Ps, 2-NHTS Non-4Ps, 3-Non-NHTS

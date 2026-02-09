@@ -31,8 +31,15 @@ class UpdateHouseholdRequest extends FormRequest
             'municipality_city' => ['nullable', 'string', 'max:255'],
             'province' => ['nullable', 'string', 'max:255'],
             
-            // Household Identification
-            'household_number' => ['sometimes', 'string', 'max:255', Rule::unique('households', 'household_number')->ignore($householdId)],
+            // Household Identification (duplicate = same HH No. + same barangay, ignore current record)
+            'household_number' => [
+                'sometimes',
+                'string',
+                'max:255',
+                Rule::unique('households')->where(function ($query) {
+                    return $query->where('barangay', $this->input('barangay'));
+                })->ignore($householdId),
+            ],
             'family_living_in_house' => ['nullable', 'integer', 'min:0'],
             'number_of_members' => ['nullable', 'integer', 'min:0'],
             'nhts_household_group' => ['nullable', 'integer', Rule::in([1, 2, 3])],

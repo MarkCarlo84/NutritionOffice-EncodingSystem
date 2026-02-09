@@ -19,14 +19,18 @@ class HouseholdController extends Controller
     {
         $query = Household::with('members');
 
-        // Search filters
-        if ($request->has('search')) {
-            $search = $request->get('search');
+        // Search filters (household fields + member names)
+        if ($request->has('search') && trim((string) $request->get('search')) !== '') {
+            $search = trim((string) $request->get('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('household_number', 'like', "%{$search}%")
                   ->orWhere('barangay', 'like', "%{$search}%")
                   ->orWhere('municipality_city', 'like', "%{$search}%")
-                  ->orWhere('province', 'like', "%{$search}%");
+                  ->orWhere('province', 'like', "%{$search}%")
+                  ->orWhere('purok_sito', 'like', "%{$search}%")
+                  ->orWhereHas('members', function ($mq) use ($search) {
+                      $mq->where('name', 'like', "%{$search}%");
+                  });
             });
         }
 
@@ -143,6 +147,33 @@ class HouseholdController extends Controller
     }
 
     /**
+     * Check if household_number + barangay already exists (duplicate check).
+     * GET /api/households/check-duplicate?household_number=...&barangay=...&exclude_id=... (optional)
+     */
+    public function checkDuplicate(Request $request): JsonResponse
+    {
+        $request->validate([
+            'household_number' => 'required|string|max:255',
+            'barangay' => 'nullable|string|max:255',
+            'exclude_id' => 'nullable|integer|exists:households,id',
+        ]);
+
+        $query = Household::where('household_number', $request->household_number)
+            ->where('barangay', $request->get('barangay', ''));
+
+        if ($request->has('exclude_id')) {
+            $query->where('id', '!=', $request->exclude_id);
+        }
+
+        $exists = $query->exists();
+
+        return response()->json([
+            'duplicate' => $exists,
+            'message' => $exists ? 'A household with this HH No. already exists in this barangay.' : null,
+        ]);
+    }
+
+    /**
      * Import households from Excel/CSV file or JSON data.
      */
     public function import(Request $request): JsonResponse
@@ -209,11 +240,14 @@ class HouseholdController extends Controller
 
                         $validated = $validator->validated();
 
-                        // Check if household_number already exists
-                        $existing = Household::where('household_number', $validated['household_number'])->first();
+                        // Check duplicate: same household_number + barangay
+                        $barangay = $validated['barangay'] ?? '';
+                        $existing = Household::where('household_number', $validated['household_number'])
+                            ->where('barangay', $barangay)
+                            ->first();
                         if ($existing) {
                             $failed++;
-                            $errors[] = "Row " . ($index + 1) . ": Household number '{$validated['household_number']}' already exists";
+                            $errors[] = "Row " . ($index + 1) . ": Household number '{$validated['household_number']}' already exists in this barangay";
                             continue;
                         }
 

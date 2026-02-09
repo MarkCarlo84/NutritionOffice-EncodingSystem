@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/api';
+import api from '../lib/api';
 import './BarangaySummary.css';
 
 const BARANGAYS = [
@@ -183,7 +182,7 @@ const BarangaySummary = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/households?per_page=10000`);
+        const res = await api.get('/households', { params: { per_page: 10000 } });
         const list = res.data?.data ?? res.data ?? [];
         const all = Array.isArray(list) ? list : [];
         setHouseholds(all);
