@@ -9,6 +9,7 @@ import {
   BARANGAY_DISPLAY,
   type SurveySummary,
 } from '../utils/surveySummary';
+import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
 import './ExportData.css';
 
 const OCC_LABELS = [
@@ -84,417 +85,73 @@ const ExportData = () => {
         URL.revokeObjectURL(url);
         setMessage({ type: 'success', text: 'Data exported successfully as CSV!' });
       } else if (format === 'excel') {
-        // Excel export matching BNS Form structure with proper layout using ExcelJS
+        // Excel (BNS Form) - same layout as Import page Download Template: rows 1-10 header, 3 rows per household
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Household Data');
+        const worksheet = workbook.addWorksheet('Household Data', { properties: { defaultRowHeight: 18 } });
+        buildBnsFormHeader(worksheet);
 
-        // Add form header (rows 1-3)
-        const titleRow1 = worksheet.addRow(['BNS Form No. 1A']);
-        titleRow1.getCell(1).font = { bold: true, size: 14 };
-        titleRow1.getCell(1).alignment = { horizontal: 'center' };
-        worksheet.mergeCells(1, 1, 1, 34);
-
-        const titleRow2 = worksheet.addRow(['Philippine Plan of Action for Nutrition']);
-        titleRow2.getCell(1).font = { bold: true, size: 12 };
-        titleRow2.getCell(1).alignment = { horizontal: 'center' };
-        worksheet.mergeCells(2, 1, 2, 34);
-
-        const titleRow3 = worksheet.addRow(['HOUSEHOLD PROFILE']);
-        titleRow3.getCell(1).font = { bold: true, size: 12 };
-        titleRow3.getCell(1).alignment = { horizontal: 'center' };
-        worksheet.mergeCells(3, 1, 3, 34);
-
-        // Add empty row
-        worksheet.addRow([]);
-
-        // Define column headers matching BNS Form PDF structure (C1-C34)
-        // Row 5: Main header row with merged cells for categories
-        const mainHeaderRow = worksheet.addRow([]);
-        
-        // C1-C5: Basic Info
-        mainHeaderRow.getCell(1).value = 'HH\nNo.';
-        mainHeaderRow.getCell(2).value = 'No. of\nfamily\nliving in\nthe house';
-        mainHeaderRow.getCell(3).value = 'Number\nof HH\nmembers';
-        mainHeaderRow.getCell(4).value = 'NHTS\nHousehold';
-        mainHeaderRow.getCell(5).value = 'Indigenous\nGroup';
-        
-        // C6-C25: Age Classification / Health Risk Group (with M/F subheaders)
-        // Newborn (0-28 days) - C6, C7
-        worksheet.mergeCells(5, 6, 5, 7);
-        mainHeaderRow.getCell(6).value = 'Newborn\n(0-28 days)';
-        
-        // Infant (29 days-11 months) - C8, C9
-        worksheet.mergeCells(5, 8, 5, 9);
-        mainHeaderRow.getCell(8).value = 'Infant\n(29 days-\n11 months)';
-        
-        // Under-five (1-4 years old) - C10, C11
-        worksheet.mergeCells(5, 10, 5, 11);
-        mainHeaderRow.getCell(10).value = 'Under-five\n(1-4 years\nold)';
-        
-        // Children 5-9 y.o. - C12, C13
-        worksheet.mergeCells(5, 12, 5, 13);
-        mainHeaderRow.getCell(12).value = 'Children\n5-9 y.o.';
-        
-        // Adolescence (10-19 y.o.) - C14, C15
-        worksheet.mergeCells(5, 14, 5, 15);
-        mainHeaderRow.getCell(14).value = 'Adolescence\n(10-19 y.o.)';
-        
-        // Pregnant - C16
-        mainHeaderRow.getCell(16).value = 'Pregnant';
-        
-        // Adolescent Pregnant - C17
-        mainHeaderRow.getCell(17).value = 'Adolescent\nPregnant';
-        
-        // Post-Partum (PP) - C18
-        mainHeaderRow.getCell(18).value = 'Post-\nPartum\n(PP)';
-        
-        // 15-49 y.o. not pregnant & non PP - C19
-        mainHeaderRow.getCell(19).value = '15-49 y.o.\nnot pregnant\n& non PP';
-        
-        // Adult 20-59 y.o. - C20, C21
-        worksheet.mergeCells(5, 20, 5, 21);
-        mainHeaderRow.getCell(20).value = 'Adult\n20-59 y.o.';
-        
-        // Senior Citizens - C22, C23
-        worksheet.mergeCells(5, 22, 5, 23);
-        mainHeaderRow.getCell(22).value = 'Senior\nCitizens';
-        
-        // Person With Disability - C24, C25
-        worksheet.mergeCells(5, 24, 5, 25);
-        mainHeaderRow.getCell(24).value = 'Person\nWith\nDisability';
-        
-        // Name of Father (Fa), Mother (Mo), Caregiver (Ca) - C26, C27, C28
-        mainHeaderRow.getCell(26).value = 'Name of\nFather\n(Fa)';
-        mainHeaderRow.getCell(27).value = 'Name of\nMother\n(Mo)';
-        mainHeaderRow.getCell(28).value = 'Name of\nCaregiver\n(Ca)';
-        
-        // Occupation - C29, C30, C31
-        mainHeaderRow.getCell(29).value = 'Occupation\n(Fa)';
-        mainHeaderRow.getCell(30).value = 'Occupation\n(Mo)';
-        mainHeaderRow.getCell(31).value = 'Occupation\n(Ca)';
-        
-        // Educational Attainment - C32, C33, C34
-        mainHeaderRow.getCell(32).value = 'Educational\nAttainment\n(Fa)';
-        mainHeaderRow.getCell(33).value = 'Educational\nAttainment\n(Mo)';
-        mainHeaderRow.getCell(34).value = 'Educational\nAttainment\n(Ca)';
-
-        // Add headers for additional columns in main header row (empty for now, will be in row 7)
-        for (let i = 35; i <= 44; i++) {
-          mainHeaderRow.getCell(i).value = '';
-          mainHeaderRow.getCell(i).border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        }
-
-        // Format main header row
-        mainHeaderRow.font = { bold: true, size: 9 };
-        mainHeaderRow.alignment = { 
-          vertical: 'middle', 
-          horizontal: 'center',
-          wrapText: true 
+        const thinBorder = {
+          top: { style: 'thin' as const },
+          left: { style: 'thin' as const },
+          bottom: { style: 'thin' as const },
+          right: { style: 'thin' as const },
         };
-        mainHeaderRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFE8E8E8' }
-        };
-        mainHeaderRow.height = 60;
-        mainHeaderRow.eachCell((cell) => {
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        });
 
-        // Row 6: M/F subheaders for age groups
-        const subHeaderRow = worksheet.addRow([]);
-        // C1-C5: Empty or labels
-        subHeaderRow.getCell(1).value = 'C1';
-        subHeaderRow.getCell(2).value = 'C2';
-        subHeaderRow.getCell(3).value = 'C3';
-        subHeaderRow.getCell(4).value = 'C4';
-        subHeaderRow.getCell(5).value = 'C5';
-        
-        // C6-C25: M/F labels
-        subHeaderRow.getCell(6).value = 'M';
-        subHeaderRow.getCell(7).value = 'F';
-        subHeaderRow.getCell(8).value = 'M';
-        subHeaderRow.getCell(9).value = 'F';
-        subHeaderRow.getCell(10).value = 'M';
-        subHeaderRow.getCell(11).value = 'F';
-        subHeaderRow.getCell(12).value = 'M';
-        subHeaderRow.getCell(13).value = 'F';
-        subHeaderRow.getCell(14).value = 'M';
-        subHeaderRow.getCell(15).value = 'F';
-        subHeaderRow.getCell(16).value = 'F';
-        subHeaderRow.getCell(17).value = 'F';
-        subHeaderRow.getCell(18).value = 'F';
-        subHeaderRow.getCell(19).value = 'F';
-        subHeaderRow.getCell(20).value = 'M';
-        subHeaderRow.getCell(21).value = 'F';
-        subHeaderRow.getCell(22).value = 'M';
-        subHeaderRow.getCell(23).value = 'F';
-        subHeaderRow.getCell(24).value = 'M';
-        subHeaderRow.getCell(25).value = 'F';
-        
-        // C26-C34: Column labels
-        subHeaderRow.getCell(26).value = 'C26';
-        subHeaderRow.getCell(27).value = 'C27';
-        subHeaderRow.getCell(28).value = 'C28';
-        subHeaderRow.getCell(29).value = 'C29';
-        subHeaderRow.getCell(30).value = 'C30';
-        subHeaderRow.getCell(31).value = 'C31';
-        subHeaderRow.getCell(32).value = 'C32';
-        subHeaderRow.getCell(33).value = 'C33';
-        subHeaderRow.getCell(34).value = 'C34';
-        
-        // Additional columns (35-44) - empty in subheader
-        for (let i = 35; i <= 44; i++) {
-          subHeaderRow.getCell(i).value = '';
-        }
-
-        // Format subheader row
-        subHeaderRow.font = { bold: true, size: 9 };
-        subHeaderRow.alignment = { 
-          vertical: 'middle', 
-          horizontal: 'center',
-          wrapText: true 
-        };
-        subHeaderRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF0F0F0' }
-        };
-        subHeaderRow.height = 25;
-        subHeaderRow.eachCell((cell) => {
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        });
-
-        // Row 7: Additional headers for location and other fields
-        const additionalHeaderRow = worksheet.addRow([]);
-        // C1-C34 already have headers, now add headers for additional columns
-        additionalHeaderRow.getCell(35).value = 'Purok/Sito';
-        additionalHeaderRow.getCell(36).value = 'Barangay';
-        additionalHeaderRow.getCell(37).value = 'Municipality/City';
-        additionalHeaderRow.getCell(38).value = 'Province';
-        additionalHeaderRow.getCell(39).value = 'Couple Practicing\nFamily Planning';
-        additionalHeaderRow.getCell(40).value = 'Toilet Type\n(1,2,3,4)';
-        additionalHeaderRow.getCell(41).value = 'Water Source\n(1,2)';
-        additionalHeaderRow.getCell(42).value = 'Food Production\nActivity\n(VG/PL/FP)';
-        additionalHeaderRow.getCell(43).value = 'HH using\nIodized Salt';
-        additionalHeaderRow.getCell(44).value = 'HH using\nIron-Fortified\nRice';
-
-        // Format additional header row
-        additionalHeaderRow.font = { bold: true, size: 9 };
-        additionalHeaderRow.alignment = { 
-          vertical: 'middle', 
-          horizontal: 'center',
-          wrapText: true 
-        };
-        additionalHeaderRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFE8E8E8' }
-        };
-        additionalHeaderRow.height = 40;
-        additionalHeaderRow.eachCell((cell, colNumber) => {
-          if (colNumber >= 35) {
-            cell.border = {
-              top: { style: 'thin' },
-              left: { style: 'thin' },
-              bottom: { style: 'thin' },
-              right: { style: 'thin' }
-            };
-          }
-        });
-
-        // Also update subheader row to include empty cells for additional columns
-        for (let i = 35; i <= 44; i++) {
-          subHeaderRow.getCell(i).value = '';
-          subHeaderRow.getCell(i).border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        }
-
-        // Add data rows starting from row 8
         households.forEach((h: any) => {
-          // Get members data
           const father = h.members?.find((m: any) => m.role === 'father');
           const mother = h.members?.find((m: any) => m.role === 'mother');
           const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
+          const fpVal = h.couple_practicing_family_planning === true ? 'Yes' : h.couple_practicing_family_planning === false ? 'No' : '';
+          const saltVal = h.using_iodized_salt ? 'Yes' : '';
+          const riceVal = h.using_iron_fortified_rice ? 'Yes' : '';
 
-          // Create row with C1-C34 data matching PDF structure
-          const row = worksheet.addRow([
-            // C1: HH No.
-            h.household_number || '',
-            // C2: No. of family living in the house
-            h.family_living_in_house || 0,
-            // C3: Number of HH members
-            h.number_of_members || 0,
-            // C4: NHTS Household
-            h.nhts_household_group || '',
-            // C5: Indigenous Group
-            h.indigenous_group || '',
-            // C6-C7: Newborn (0-28 days) M/F
-            h.newborn_male || 0,
-            h.newborn_female || 0,
-            // C8-C9: Infant (29 days-11 months) M/F
-            h.infant_male || 0,
-            h.infant_female || 0,
-            // C10-C11: Under-five (1-4 years old) M/F
-            h.under_five_male || 0,
-            h.under_five_female || 0,
-            // C12-C13: Children 5-9 y.o. M/F
-            h.children_male || 0,
-            h.children_female || 0,
-            // C14-C15: Adolescence (10-19 y.o.) M/F
-            h.adolescence_male || 0,
-            h.adolescence_female || 0,
-            // C16: Pregnant F
-            h.pregnant || 0,
-            // C17: Adolescent Pregnant F
-            h.adolescent_pregnant || 0,
-            // C18: Post-Partum (PP) F
-            h.post_partum || 0,
-            // C19: 15-49 y.o. not pregnant & non PP F
-            h.women_15_49_not_pregnant || 0,
-            // C20-C21: Adult 20-59 y.o. M/F
-            h.adult_male || 0,
-            h.adult_female || 0,
-            // C22-C23: Senior Citizens M/F
-            h.senior_citizen_male || 0,
-            h.senior_citizen_female || 0,
-            // C24-C25: Person With Disability M/F
-            h.pwd_male || 0,
-            h.pwd_female || 0,
-            // C26: Name of Father (Fa)
-            father?.name || '',
-            // C27: Name of Mother (Mo)
-            mother?.name || '',
-            // C28: Name of Caregiver (Ca)
-            caregiver?.name || '',
-            // C29: Occupation (Fa)
-            father?.occupation || '',
-            // C30: Occupation (Mo)
-            mother?.occupation || '',
-            // C31: Occupation (Ca)
-            caregiver?.occupation || '',
-            // C32: Educational Attainment (Fa)
-            father?.educational_attainment || '',
-            // C33: Educational Attainment (Mo)
-            mother?.educational_attainment || '',
-            // C34: Educational Attainment (Ca)
-            caregiver?.educational_attainment || '',
-          ]);
+          // Row 1 (Fa): HH data + age counts + Fa name, occupation, edu + household C29-C34
+          const r1 = worksheet.addRow([]);
+          r1.getCell(1).value = h.household_number || '';
+          r1.getCell(2).value = h.family_living_in_house ?? '';
+          r1.getCell(3).value = h.number_of_members ?? '';
+          r1.getCell(4).value = h.nhts_household_group || '';
+          r1.getCell(5).value = h.indigenous_group || '';
+          const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
+          for (let c = 6; c <= 25; c++) r1.getCell(c).value = (h as any)[ageFields[c - 6]] ?? 0;
+          r1.getCell(26).value = father?.name || '(Fa)';
+          r1.getCell(27).value = father?.occupation || '';
+          r1.getCell(28).value = father?.educational_attainment || '';
+          r1.getCell(29).value = fpVal;
+          r1.getCell(30).value = h.toilet_type || '';
+          r1.getCell(31).value = h.water_source || '';
+          r1.getCell(32).value = h.food_production_activity || '';
+          r1.getCell(33).value = saltVal;
+          r1.getCell(34).value = riceVal;
 
-          // Add location info and additional fields in merged cells or separate columns
-          // For now, we'll add them as additional columns after C34, or we can add them in a separate section
-          // Actually, looking at the PDF, location info (Purok/Sito, Barangay, etc.) appears to be per-row info
-          // Let's add them as columns after C34
-          row.getCell(35).value = h.purok_sito || '';
-          row.getCell(36).value = h.barangay || '';
-          row.getCell(37).value = h.municipality_city || '';
-          row.getCell(38).value = h.province || '';
-          row.getCell(39).value = h.couple_practicing_family_planning === true ? 'Yes' : h.couple_practicing_family_planning === false ? 'No' : '';
-          row.getCell(40).value = h.toilet_type || '';
-          row.getCell(41).value = h.water_source || '';
-          row.getCell(42).value = h.food_production_activity || '';
-          row.getCell(43).value = h.using_iodized_salt ? 'Yes' : 'No';
-          row.getCell(44).value = h.using_iron_fortified_rice ? 'Yes' : 'No';
+          // Row 2 (Mo)
+          const r2 = worksheet.addRow([]);
+          r2.getCell(26).value = mother?.name || '(Mo)';
+          r2.getCell(27).value = mother?.occupation || '';
+          r2.getCell(28).value = mother?.educational_attainment || '';
 
-          // Style data rows
-          row.eachCell((cell, colNumber) => {
-            cell.border = {
-              top: { style: 'thin' },
-              left: { style: 'thin' },
-              bottom: { style: 'thin' },
-              right: { style: 'thin' }
-            };
-            // C1-C34: Center align numbers, left align text
-            if (colNumber >= 1 && colNumber <= 25 && typeof cell.value === 'number') {
-              cell.alignment = { 
-                vertical: 'middle', 
-                horizontal: 'center'
-              };
-            } else if (colNumber >= 26 && colNumber <= 44) {
-              // C26-C44: Left align text
-              cell.alignment = { 
-                vertical: 'middle', 
-                horizontal: 'left',
-                wrapText: true 
-              };
-            } else {
-              cell.alignment = { 
-                vertical: 'middle', 
-                horizontal: 'left',
-                wrapText: true 
-              };
+          // Row 3 (Ca)
+          const r3 = worksheet.addRow([]);
+          r3.getCell(26).value = caregiver?.name || '(Ca)';
+          r3.getCell(27).value = caregiver?.occupation || '';
+          r3.getCell(28).value = caregiver?.educational_attainment || '';
+
+          for (const row of [r1, r2, r3]) {
+            for (let c = 1; c <= 34; c++) {
+              row.getCell(c).border = thinBorder;
+              if (c <= 25 || (c >= 29 && c <= 34)) row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
             }
-          });
+          }
+
+          const startRow = worksheet.rowCount - 2;
+          const endRow = worksheet.rowCount;
+          worksheet.mergeCells(startRow, 1, endRow, 1);
+          for (let c = 2; c <= 25; c++) worksheet.mergeCells(startRow, c, endRow, c);
+          for (let c = 29; c <= 34; c++) worksheet.mergeCells(startRow, c, endRow, c);
         });
 
-        // Set column widths for C1-C34 matching PDF layout
-        worksheet.columns = [
-          { width: 10 }, // C1: HH No.
-          { width: 8 }, // C2: No. of family living in the house
-          { width: 8 }, // C3: Number of HH members
-          { width: 12 }, // C4: NHTS Household
-          { width: 12 }, // C5: Indigenous Group
-          { width: 6 }, // C6: Newborn M
-          { width: 6 }, // C7: Newborn F
-          { width: 6 }, // C8: Infant M
-          { width: 6 }, // C9: Infant F
-          { width: 6 }, // C10: Under-five M
-          { width: 6 }, // C11: Under-five F
-          { width: 6 }, // C12: Children 5-9 M
-          { width: 6 }, // C13: Children 5-9 F
-          { width: 6 }, // C14: Adolescence M
-          { width: 6 }, // C15: Adolescence F
-          { width: 6 }, // C16: Pregnant F
-          { width: 8 }, // C17: Adolescent Pregnant F
-          { width: 6 }, // C18: Post-Partum F
-          { width: 10 }, // C19: 15-49 y.o. not pregnant & non PP F
-          { width: 6 }, // C20: Adult M
-          { width: 6 }, // C21: Adult F
-          { width: 8 }, // C22: Senior Citizens M
-          { width: 8 }, // C23: Senior Citizens F
-          { width: 8 }, // C24: Person With Disability M
-          { width: 8 }, // C25: Person With Disability F
-          { width: 18 }, // C26: Name of Father
-          { width: 18 }, // C27: Name of Mother
-          { width: 18 }, // C28: Name of Caregiver
-          { width: 12 }, // C29: Occupation (Fa)
-          { width: 12 }, // C30: Occupation (Mo)
-          { width: 12 }, // C31: Occupation (Ca)
-          { width: 15 }, // C32: Educational Attainment (Fa)
-          { width: 15 }, // C33: Educational Attainment (Mo)
-          { width: 15 }, // C34: Educational Attainment (Ca)
-          { width: 12 }, // Additional: Purok/Sito
-          { width: 15 }, // Additional: Barangay
-          { width: 18 }, // Additional: Municipality/City
-          { width: 12 }, // Additional: Province
-          { width: 12 }, // Additional: Couple Practicing Family Planning
-          { width: 10 }, // Additional: Toilet Type
-          { width: 10 }, // Additional: Water Source
-          { width: 15 }, // Additional: Food Production Activity
-          { width: 12 }, // Additional: HH using Iodized Salt
-          { width: 15 }, // Additional: HH using Iron-Fortified Rice
-        ];
+        applyBnsColumnWidths(worksheet);
 
-        // Generate buffer and download
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
@@ -503,7 +160,6 @@ const ExportData = () => {
         link.download = `Nutrition BNS Form ${new Date().toISOString().split('T')[0]}.xlsx`;
         link.click();
         URL.revokeObjectURL(url);
-        
         setMessage({ type: 'success', text: 'Data exported successfully as Excel (BNS Form format)!' });
       }
     } catch (error: any) {
@@ -758,29 +414,6 @@ const ExportData = () => {
           </button>
         </div>
 
-        <div className="export-card">
-          <h2>JSON Format</h2>
-          <p>Export all household data as JSON file. Includes all fields and relationships.</p>
-          <button 
-            onClick={() => handleExport('json')} 
-            className="export-btn"
-            disabled={exporting}
-          >
-            {exporting ? 'Exporting...' : 'Export as JSON'}
-          </button>
-        </div>
-
-        <div className="export-card">
-          <h2>CSV Format</h2>
-          <p>Export household data as CSV file. Suitable for spreadsheet applications.</p>
-          <button 
-            onClick={() => handleExport('csv')} 
-            className="export-btn"
-            disabled={exporting}
-          >
-            {exporting ? 'Exporting...' : 'Export as CSV'}
-          </button>
-        </div>
       </div>
     </div>
   );

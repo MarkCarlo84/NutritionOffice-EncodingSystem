@@ -41,8 +41,39 @@ class HouseholdController extends Controller
         if ($request->has('municipality_city')) {
             $query->where('municipality_city', $request->get('municipality_city'));
         }
-        if ($request->has('barangay')) {
+        if ($request->has('barangay') && trim((string) $request->get('barangay')) !== '') {
             $query->where('barangay', $request->get('barangay'));
+        }
+
+        // BNS filter (searches same fields as general search)
+        if ($request->has('bns') && trim((string) $request->get('bns')) !== '') {
+            $bns = trim((string) $request->get('bns'));
+            $query->where(function ($q) use ($bns) {
+                $q->where('household_number', 'like', "%{$bns}%")
+                  ->orWhere('barangay', 'like', "%{$bns}%")
+                  ->orWhere('purok_sito', 'like', "%{$bns}%")
+                  ->orWhereHas('members', function ($mq) use ($bns) {
+                      $mq->where('name', 'like', "%{$bns}%");
+                  });
+            });
+        }
+
+        // Purok / Block / Street filter
+        if ($request->has('purok_sito') && trim((string) $request->get('purok_sito')) !== '') {
+            $query->where('purok_sito', 'like', '%' . trim($request->get('purok_sito')) . '%');
+        }
+
+        // Survey year filter (year of created_at)
+        if ($request->has('survey_year') && is_numeric($request->get('survey_year'))) {
+            $query->whereYear('created_at', (int) $request->get('survey_year'));
+        }
+
+        // Period From / Period To (created_at date range)
+        if ($request->has('period_from') && $request->get('period_from')) {
+            $query->whereDate('created_at', '>=', $request->get('period_from'));
+        }
+        if ($request->has('period_to') && $request->get('period_to')) {
+            $query->whereDate('created_at', '<=', $request->get('period_to'));
         }
 
         // Pagination

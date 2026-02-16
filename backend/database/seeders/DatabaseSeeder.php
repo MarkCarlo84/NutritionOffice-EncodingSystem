@@ -22,7 +22,5 @@ class DatabaseSeeder extends Seeder
             'email' => 'admin@nutrition.cabuyao.gov.ph',
             'password' => \Illuminate\Support\Facades\Hash::make('password'),
         ]);
-
-        $this->call(HouseholdSeeder::class);
     }
 }

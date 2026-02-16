@@ -2,6 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import ExcelJS from 'exceljs';
 import api from '../lib/api';
+import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
 import './ImportData.css';
 
 const ImportData = () => {
@@ -422,7 +423,6 @@ const ImportData = () => {
   };
 
   const downloadTemplate = async () => {
-    // Same format as Export BNS Form: rows 1–7, columns A–AH (1–34) only
     const thinBorder = {
       top: { style: 'thin' as const },
       left: { style: 'thin' as const },
@@ -431,120 +431,34 @@ const ImportData = () => {
     };
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Household Data', { properties: { defaultRowHeight: 18 } });
+    buildBnsFormHeader(worksheet);
 
-    // Row 1: BNS Form No. 1A
-    const titleRow1 = worksheet.addRow(['BNS Form No. 1A']);
-    titleRow1.getCell(1).font = { bold: true, size: 14 };
-    titleRow1.getCell(1).alignment = { horizontal: 'center' };
-    worksheet.mergeCells(1, 1, 1, 34);
+    // Rows 11+: Sample data blocks (Fa), (Mo), (Ca) - 8 blocks of 3 rows each
+    const addDataRow = (label: string) => {
+      const row = worksheet.addRow([]);
+      for (let c = 1; c <= 34; c++) {
+        if (c === 26) row.getCell(c).value = label;
+        else row.getCell(c).value = '';
+        row.getCell(c).border = thinBorder;
+        row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+      return row;
+    };
+    for (let block = 0; block < 8; block++) {
+      addDataRow('(Fa)');
+      addDataRow('(Mo)');
+      addDataRow('(Ca)');
+    }
+    // Merges for each 3-row block (rows 11-13, 14-16, ..., 32-34)
+    for (let block = 0; block < 8; block++) {
+      const startRow = 11 + block * 3;
+      const endRow = startRow + 2;
+      worksheet.mergeCells(startRow, 1, endRow, 1);
+      for (let c = 2; c <= 25; c++) worksheet.mergeCells(startRow, c, endRow, c);
+      for (let c = 29; c <= 34; c++) worksheet.mergeCells(startRow, c, endRow, c);
+    }
 
-    const titleRow2 = worksheet.addRow(['Philippine Plan of Action for Nutrition']);
-    titleRow2.getCell(1).font = { bold: true, size: 12 };
-    titleRow2.getCell(1).alignment = { horizontal: 'center' };
-    worksheet.mergeCells(2, 1, 2, 34);
-
-    const titleRow3 = worksheet.addRow(['HOUSEHOLD PROFILE']);
-    titleRow3.getCell(1).font = { bold: true, size: 12 };
-    titleRow3.getCell(1).alignment = { horizontal: 'center' };
-    worksheet.mergeCells(3, 1, 3, 34);
-
-    worksheet.addRow([]);
-
-    // Row 5: Main header row (C1–C34)
-    const mainHeaderRow = worksheet.addRow([]);
-    mainHeaderRow.getCell(1).value = 'HH\nNo.';
-    mainHeaderRow.getCell(2).value = 'No. of\nfamily\nliving in\nthe house';
-    mainHeaderRow.getCell(3).value = 'Number\nof HH\nmembers';
-    mainHeaderRow.getCell(4).value = 'NHTS\nHousehold';
-    mainHeaderRow.getCell(5).value = 'Indigenous\nGroup';
-    worksheet.mergeCells(5, 6, 5, 7);
-    mainHeaderRow.getCell(6).value = 'Newborn\n(0-28 days)';
-    worksheet.mergeCells(5, 8, 5, 9);
-    mainHeaderRow.getCell(8).value = 'Infant\n(29 days-\n11 months)';
-    worksheet.mergeCells(5, 10, 5, 11);
-    mainHeaderRow.getCell(10).value = 'Under-five\n(1-4 years\nold)';
-    worksheet.mergeCells(5, 12, 5, 13);
-    mainHeaderRow.getCell(12).value = 'Children\n5-9 y.o.';
-    worksheet.mergeCells(5, 14, 5, 15);
-    mainHeaderRow.getCell(14).value = 'Adolescence\n(10-19 y.o.)';
-    mainHeaderRow.getCell(16).value = 'Pregnant';
-    mainHeaderRow.getCell(17).value = 'Adolescent\nPregnant';
-    mainHeaderRow.getCell(18).value = 'Post-\nPartum\n(PP)';
-    mainHeaderRow.getCell(19).value = '15-49 y.o.\nnot pregnant\n& non PP';
-    worksheet.mergeCells(5, 20, 5, 21);
-    mainHeaderRow.getCell(20).value = 'Adult\n20-59 y.o.';
-    worksheet.mergeCells(5, 22, 5, 23);
-    mainHeaderRow.getCell(22).value = 'Senior\nCitizens';
-    worksheet.mergeCells(5, 24, 5, 25);
-    mainHeaderRow.getCell(24).value = 'Person\nWith\nDisability';
-    mainHeaderRow.getCell(26).value = 'Name of\nFather\n(Fa)';
-    mainHeaderRow.getCell(27).value = 'Name of\nMother\n(Mo)';
-    mainHeaderRow.getCell(28).value = 'Name of\nCaregiver\n(Ca)';
-    mainHeaderRow.getCell(29).value = 'Occupation\n(Fa)';
-    mainHeaderRow.getCell(30).value = 'Occupation\n(Mo)';
-    mainHeaderRow.getCell(31).value = 'Occupation\n(Ca)';
-    mainHeaderRow.getCell(32).value = 'Educational\nAttainment\n(Fa)';
-    mainHeaderRow.getCell(33).value = 'Educational\nAttainment\n(Mo)';
-    mainHeaderRow.getCell(34).value = 'Educational\nAttainment\n(Ca)';
-    mainHeaderRow.font = { bold: true, size: 9 };
-    mainHeaderRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    mainHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
-    mainHeaderRow.height = 60;
-    for (let c = 1; c <= 34; c++) mainHeaderRow.getCell(c).border = thinBorder;
-
-    // Row 6: M/F subheaders
-    const subHeaderRow = worksheet.addRow([]);
-    subHeaderRow.getCell(1).value = 'C1';
-    subHeaderRow.getCell(2).value = 'C2';
-    subHeaderRow.getCell(3).value = 'C3';
-    subHeaderRow.getCell(4).value = 'C4';
-    subHeaderRow.getCell(5).value = 'C5';
-    subHeaderRow.getCell(6).value = 'M';
-    subHeaderRow.getCell(7).value = 'F';
-    subHeaderRow.getCell(8).value = 'M';
-    subHeaderRow.getCell(9).value = 'F';
-    subHeaderRow.getCell(10).value = 'M';
-    subHeaderRow.getCell(11).value = 'F';
-    subHeaderRow.getCell(12).value = 'M';
-    subHeaderRow.getCell(13).value = 'F';
-    subHeaderRow.getCell(14).value = 'M';
-    subHeaderRow.getCell(15).value = 'F';
-    subHeaderRow.getCell(16).value = 'F';
-    subHeaderRow.getCell(17).value = 'F';
-    subHeaderRow.getCell(18).value = 'F';
-    subHeaderRow.getCell(19).value = 'F';
-    subHeaderRow.getCell(20).value = 'M';
-    subHeaderRow.getCell(21).value = 'F';
-    subHeaderRow.getCell(22).value = 'M';
-    subHeaderRow.getCell(23).value = 'F';
-    subHeaderRow.getCell(24).value = 'M';
-    subHeaderRow.getCell(25).value = 'F';
-    subHeaderRow.getCell(26).value = 'C26';
-    subHeaderRow.getCell(27).value = 'C27';
-    subHeaderRow.getCell(28).value = 'C28';
-    subHeaderRow.getCell(29).value = 'C29';
-    subHeaderRow.getCell(30).value = 'C30';
-    subHeaderRow.getCell(31).value = 'C31';
-    subHeaderRow.getCell(32).value = 'C32';
-    subHeaderRow.getCell(33).value = 'C33';
-    subHeaderRow.getCell(34).value = 'C34';
-    subHeaderRow.font = { bold: true, size: 9 };
-    subHeaderRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    subHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-    subHeaderRow.height = 25;
-    for (let c = 1; c <= 34; c++) subHeaderRow.getCell(c).border = thinBorder;
-
-    // Row 7: empty header row (A–AH) for consistency with BNS form 7-row header
-    const row7 = worksheet.addRow([]);
-    row7.font = { bold: true, size: 9 };
-    row7.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    row7.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
-    row7.height = 25;
-    for (let c = 1; c <= 34; c++) row7.getCell(c).border = thinBorder;
-
-    // Column widths (A–AH)
-    const colWidths = [8, 10, 10, 12, 12, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 8, 10, 8, 14, 10, 10, 10, 10, 10, 10, 18, 18, 18, 12, 12, 12, 15, 15, 15];
-    for (let c = 1; c <= 34; c++) worksheet.getColumn(c).width = colWidths[c - 1] ?? 12;
+    applyBnsColumnWidths(worksheet);
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -633,12 +547,13 @@ const ImportData = () => {
 
         <div className="import-instructions">
           <h3>Import Instructions</h3>
-          <ul>
-            <li>The download template matches <strong>Nutrition BNS Form.xlsx</strong> (BNS FORM 1A). Each household uses <strong>3 rows</strong>: first row = Father (Fa), second = Mother (Mo), third = Caregiver (Ca). Fill HH No. and household data on the first row of each 3-row block; fill names and occupation/education on each of the 3 rows.</li>
-            <li>Columns: C1 = HH No., C2 = No. of family in house, C4 = Number of HH members, C6 = NHTS, C7 = Indigenous Group, C8–C27 = age/health counts (M/F), C28 = Name (Fa/Mo/Ca), C29 = Occupation, C30 = Educational Attainment, C31–C32 = Couple Practicing Family Planning (Yes/No), C33 = Toilet Type, C34 = Water Source, C35 = Food Production, C36–C39 = Iodized Salt and Iron-Fortified Rice (Yes/No).</li>
-            <li>Required: <strong>HH No.</strong> (C1) on the first row of each 3-row household block.</li>
-            <li>Maximum file size: 10MB. Supported: Excel (.xlsx, .xls) in this BNS Form layout, or CSV.</li>
-          </ul>
+          <ol>
+            <li><strong>Download the template</strong> (Nutrition BNS Form) and open it in Excel.</li>
+            <li><strong>Each household = 3 rows:</strong> Row 1 = Father (Fa), Row 2 = Mother (Mo), Row 3 = Caregiver (Ca). Put HH No. and household info on the first row; put names and occupation/education on each of the 3 rows.</li>
+            <li><strong>Required:</strong> Fill in <strong>HH No.</strong> (column A) on the first row of every 3-row block.</li>
+            <li><strong>Upload</strong> your filled file (Excel .xlsx/.xls or CSV, max 10MB) and click Import Data.</li>
+          </ol>
+          <p className="import-instructions-note">Need column details? The template headers (C1–C34) match the BNS Form 1A layout.</p>
         </div>
       </div>
     </div>
