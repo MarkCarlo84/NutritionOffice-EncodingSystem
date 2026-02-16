@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const location = useLocation();
 
   if (loading) {
-    return <LoadingSpinner overlay label="Signing you in..." />;
+    return <LoadingSpinner overlay label="Loading" />;
   }
 
   if (!token) {

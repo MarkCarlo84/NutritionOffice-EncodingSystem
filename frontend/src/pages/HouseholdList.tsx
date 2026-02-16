@@ -3,6 +3,41 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import './HouseholdList.css';
 
+const BARANGAYS = [
+  'All Barangays',
+  'Baclaran',
+  'Banay-Banay',
+  'Banlic',
+  'Bigaa',
+  'Butong',
+  'Casile',
+  'Diezmo',
+  'Pulo',
+  'Sala',
+  'San Isidro',
+  'Poblacion Uno',
+  'Poblacion Dos',
+  'Poblacion Tres',
+];
+
+interface FilterValues {
+  bns: string;
+  barangay: string;
+  purok: string;
+  surveyYear: string;
+  periodFrom: string;
+  periodTo: string;
+}
+
+const initialFilter: FilterValues = {
+  bns: '',
+  barangay: 'All Barangays',
+  purok: '',
+  surveyYear: '',
+  periodFrom: '',
+  periodTo: '',
+};
+
 interface Household {
   id: number;
   household_number: string;
@@ -17,6 +52,8 @@ interface Household {
 const HouseholdList = () => {
   const [households, setHouseholds] = useState<Household[]>([]);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterValues>(initialFilter);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
@@ -25,11 +62,22 @@ const HouseholdList = () => {
   const [total, setTotal] = useState(0);
   const navigate = useNavigate();
 
-  const fetchList = async (pageNum: number = 1, searchTerm: string = '') => {
+  const buildParams = (pageNum: number, searchTerm: string, filterValues: FilterValues) => {
+    const params: Record<string, string | number> = { page: pageNum, per_page: 15 };
+    if (searchTerm.trim()) params.search = searchTerm.trim();
+    if (filterValues.bns.trim()) params.bns = filterValues.bns.trim();
+    if (filterValues.barangay && filterValues.barangay !== 'All Barangays') params.barangay = filterValues.barangay;
+    if (filterValues.purok.trim()) params.purok_sito = filterValues.purok.trim();
+    if (filterValues.surveyYear.trim()) params.survey_year = filterValues.surveyYear.trim();
+    if (filterValues.periodFrom.trim()) params.period_from = filterValues.periodFrom.trim();
+    if (filterValues.periodTo.trim()) params.period_to = filterValues.periodTo.trim();
+    return params;
+  };
+
+  const fetchList = async (pageNum: number = 1, searchTerm: string = search, filterValues: FilterValues = filter) => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = { page: pageNum, per_page: 15 };
-      if (searchTerm.trim()) params.search = searchTerm.trim();
+      const params = buildParams(pageNum, searchTerm, filterValues);
       const { data } = await api.get('/households', { params });
       setHouseholds(data.data ?? []);
       setLastPage(data.last_page ?? 1);
@@ -42,13 +90,26 @@ const HouseholdList = () => {
   };
 
   useEffect(() => {
-    fetchList(page, search);
+    fetchList(page, search, filter);
   }, [page]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    fetchList(1, search);
+    fetchList(1, search, filter);
+  };
+
+  const handleApplyFilter = () => {
+    setFilterModalOpen(false);
+    setPage(1);
+    fetchList(1, search, filter);
+  };
+
+  const handleClearFilter = () => {
+    setFilter(initialFilter);
+    setFilterModalOpen(false);
+    setPage(1);
+    fetchList(1, search, initialFilter);
   };
 
   const handleDelete = async (id: number) => {
@@ -56,7 +117,7 @@ const HouseholdList = () => {
       await api.delete(`/households/${id}`);
       setMessage({ type: 'success', text: 'Household record deleted successfully.' });
       setDeleteConfirm(null);
-      fetchList(page, search);
+      fetchList(page, search, filter);
     } catch (err: any) {
       setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to delete.' });
     }
@@ -86,8 +147,88 @@ const HouseholdList = () => {
           />
           <button type="submit" className="search-btn">Search</button>
         </form>
+        <button type="button" className="btn-filter" onClick={() => setFilterModalOpen(true)}>Filter</button>
         <Link to="/encode-record" className="btn-new">+ New Record</Link>
       </div>
+
+      {filterModalOpen && (
+        <div className="filter-modal-overlay" onClick={() => setFilterModalOpen(false)}>
+          <div className="filter-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="filter-modal-header">
+              <h2>Filter Household Records</h2>
+              <button type="button" className="filter-modal-close" onClick={() => setFilterModalOpen(false)} aria-label="Close">&times;</button>
+            </div>
+            <div className="filter-modal-body">
+              <div className="filter-row">
+                <div className="filter-field">
+                  <label htmlFor="filter-bns">BNS</label>
+                  <input
+                    id="filter-bns"
+                    type="text"
+                    placeholder="Barangay Nutrition Sch"
+                    value={filter.bns}
+                    onChange={(e) => setFilter((f) => ({ ...f, bns: e.target.value }))}
+                  />
+                </div>
+                <div className="filter-field">
+                  <label htmlFor="filter-barangay">Barangay</label>
+                  <select
+                    id="filter-barangay"
+                    value={filter.barangay}
+                    onChange={(e) => setFilter((f) => ({ ...f, barangay: e.target.value }))}
+                  >
+                    {BARANGAYS.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label htmlFor="filter-purok">Purok / Block / Street</label>
+                  <input
+                    id="filter-purok"
+                    type="text"
+                    placeholder="Optional"
+                    value={filter.purok}
+                    onChange={(e) => setFilter((f) => ({ ...f, purok: e.target.value }))}
+                  />
+                </div>
+                <div className="filter-field">
+                  <label htmlFor="filter-survey-year">Survey Year</label>
+                  <input
+                    id="filter-survey-year"
+                    type="text"
+                    placeholder="e.g. 2026"
+                    value={filter.surveyYear}
+                    onChange={(e) => setFilter((f) => ({ ...f, surveyYear: e.target.value }))}
+                  />
+                </div>
+                <div className="filter-field">
+                  <label htmlFor="filter-period-from">Period From</label>
+                  <input
+                    id="filter-period-from"
+                    type="date"
+                    value={filter.periodFrom || ''}
+                    onChange={(e) => setFilter((f) => ({ ...f, periodFrom: e.target.value }))}
+                  />
+                </div>
+                <div className="filter-field">
+                  <label htmlFor="filter-period-to">Period To</label>
+                  <input
+                    id="filter-period-to"
+                    type="date"
+                    value={filter.periodTo || ''}
+                    onChange={(e) => setFilter((f) => ({ ...f, periodTo: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="filter-modal-footer">
+              <button type="button" className="btn-clear-filter" onClick={handleClearFilter}>Clear</button>
+              <button type="button" className="btn-apply-filter" onClick={handleApplyFilter}>Apply Filter</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="list-table-wrap">
         {loading ? (

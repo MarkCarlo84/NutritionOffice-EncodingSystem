@@ -224,7 +224,8 @@
   margin: 0 0 16px 0;
 }
 
-.import-instructions ul {
+.import-instructions ul,
+.import-instructions ol {
   margin: 0;
   padding-left: 20px;
   color: var(--color-text-muted);
@@ -234,6 +235,13 @@
 
 .import-instructions li {
   margin-bottom: 8px;
+}
+
+.import-instructions-note {
+  margin: 12px 0 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 @media (max-width: 768px) {
