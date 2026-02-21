@@ -9,6 +9,8 @@ import {
   BARANGAY_DISPLAY,
   type SurveySummary,
 } from '../utils/surveySummary';
+import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
+import DownwardSelect from '../components/DownwardSelect';
 import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
 import './ExportData.css';
 
@@ -30,6 +32,16 @@ const ExportData = () => {
     surveyPeriodFrom: '',
     surveyPeriodTo: '',
   });
+  const summaryBnsOptions = getBnsOptions(summaryFilters.barangay);
+  const summaryHasMultipleBns = summaryBnsOptions.length > 1;
+
+  const handleSummaryBarangayChange = (barangay: string) => {
+    setSummaryFilters((f) => ({
+      ...f,
+      barangay,
+      bns: resolveBnsForBarangay(barangay, f.bns),
+    }));
+  };
 
   const handleExport = async (format: 'json' | 'csv' | 'excel') => {
     setExporting(true);
@@ -369,16 +381,26 @@ const ExportData = () => {
           <div className="summary-filters-inline">
             <div className="filter-row">
               <label>BNS</label>
-              <input type="text" value={summaryFilters.bns} onChange={(e) => setSummaryFilters((f) => ({ ...f, bns: e.target.value }))} placeholder="Barangay Nutrition Scholar" />
+              {summaryHasMultipleBns ? (
+                <select value={summaryFilters.bns} onChange={(e) => setSummaryFilters((f) => ({ ...f, bns: e.target.value }))}>
+                  {summaryBnsOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input type="text" value={summaryFilters.bns} onChange={(e) => setSummaryFilters((f) => ({ ...f, bns: e.target.value }))} placeholder="Barangay Nutrition Scholar" />
+              )}
             </div>
             <div className="filter-row">
               <label>Barangay</label>
-              <select value={summaryFilters.barangay} onChange={(e) => setSummaryFilters((f) => ({ ...f, barangay: e.target.value }))}>
-                <option value="">All Barangays</option>
-                {BARANGAYS.map((b) => (
-                  <option key={b} value={b}>{BARANGAY_DISPLAY[b] || b}</option>
-                ))}
-              </select>
+              <DownwardSelect
+                value={summaryFilters.barangay}
+                onChange={handleSummaryBarangayChange}
+                options={[
+                  { value: '', label: 'All Barangays' },
+                  ...BARANGAYS.map((b) => ({ value: b, label: BARANGAY_DISPLAY[b] || b })),
+                ]}
+              />
             </div>
             <div className="filter-row">
               <label>Purok / Block / Street</label>

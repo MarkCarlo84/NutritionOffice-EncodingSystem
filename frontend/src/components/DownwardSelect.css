@@ -1,0 +1,70 @@
+.downward-select {
+  position: relative;
+  width: 100%;
+}
+
+.downward-select-trigger {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius);
+  font-size: 14px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.downward-select-trigger:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.downward-select-caret {
+  font-size: 11px;
+  opacity: 0.8;
+  transition: transform 0.15s ease;
+}
+
+.downward-select-caret.open {
+  transform: rotate(180deg);
+}
+
+.downward-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1200;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+.downward-select-option {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.downward-select-option:hover {
+  background: var(--color-bg-warm);
+}
+
+.downward-select-option.active {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 600;
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import AbbreviationGuideModal from '../components/AbbreviationGuideModal';
 import './EncodeRecord.css';
 
 const BARANGAYS = [
@@ -31,6 +32,20 @@ interface HouseholdMember {
 const EncodeRecord = () => {
   const { id: editId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toIntOrNull = (value: any): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const parsed = parseInt(String(value), 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+  const normalizeCode = (value: any, allowed: string[]): string | null => {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim().toUpperCase();
+    if (!raw) return null;
+    if (allowed.includes(raw)) return raw;
+    const prefix = raw.split(/[\s_-]+/, 1)[0];
+    return allowed.includes(prefix) ? prefix : raw;
+  };
   const [formData, setFormData] = useState({
     // Location
     purok_sito: '',
@@ -105,6 +120,7 @@ const EncodeRecord = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const [showAbbreviations, setShowAbbreviations] = useState(false);
 
   // Load household when editing
   useEffect(() => {
@@ -121,8 +137,8 @@ const EncodeRecord = () => {
           household_number: h.household_number ?? '',
           family_living_in_house: Number(h.family_living_in_house) || 0,
           number_of_members: Number(h.number_of_members) || 0,
-          nhts_household_group: h.nhts_household_group != null ? Number(h.nhts_household_group) : null,
-          indigenous_group: h.indigenous_group != null ? Number(h.indigenous_group) : null,
+          nhts_household_group: toIntOrNull(h.nhts_household_group),
+          indigenous_group: toIntOrNull(h.indigenous_group),
           newborn_male: Number(h.newborn_male) || 0,
           newborn_female: Number(h.newborn_female) || 0,
           infant_male: Number(h.infant_male) || 0,
@@ -143,9 +159,9 @@ const EncodeRecord = () => {
           senior_citizen_female: Number(h.senior_citizen_female) || 0,
           pwd_male: Number(h.pwd_male) || 0,
           pwd_female: Number(h.pwd_female) || 0,
-          toilet_type: h.toilet_type != null ? Number(h.toilet_type) : null,
-          water_source: h.water_source != null ? Number(h.water_source) : null,
-          food_production_activity: h.food_production_activity ?? null,
+          toilet_type: toIntOrNull(h.toilet_type),
+          water_source: toIntOrNull(h.water_source),
+          food_production_activity: normalizeCode(h.food_production_activity, ['VG', 'FT', 'PL', 'FP', 'NA']),
           couple_practicing_family_planning: h.couple_practicing_family_planning ?? null,
           using_iodized_salt: h.using_iodized_salt ?? null,
           using_iron_fortified_rice: h.using_iron_fortified_rice ?? null,
@@ -158,8 +174,8 @@ const EncodeRecord = () => {
             id: mem?.id,
             name: mem?.name ?? '',
             role,
-            occupation: mem?.occupation != null ? Number(mem.occupation) : null,
-            educational_attainment: mem?.educational_attainment ?? null,
+            occupation: toIntOrNull(mem?.occupation),
+            educational_attainment: normalizeCode(mem?.educational_attainment, ['N', 'EU', 'EG', 'HU', 'HG', 'CU', 'CG', 'V', 'PG']),
             practicing_family_planning: !!mem?.practicing_family_planning,
           };
         }));
@@ -386,7 +402,18 @@ const EncodeRecord = () => {
   return (
     <div className="encode-record">
       <div className="form-header">
-        <h1>BNS Form No. 1A - HOUSEHOLD PROFILE {editId ? '(Edit)' : ''}</h1>
+        <div className="form-header-title-row">
+          <h1>BNS Form No. 1A - HOUSEHOLD PROFILE {editId ? '(Edit)' : ''}</h1>
+          <button
+            type="button"
+            className="abbr-info-btn"
+            onClick={() => setShowAbbreviations(true)}
+            aria-label="Show abbreviation guide"
+            title="Show abbreviation guide"
+          >
+            i
+          </button>
+        </div>
         <p>Philippines Plan of Action for Nutrition {editId ? `· Editing HH record` : '| Encode new record'}</p>
       </div>
 
@@ -1122,6 +1149,7 @@ const EncodeRecord = () => {
           </button>
         </div>
       </form>
+      <AbbreviationGuideModal open={showAbbreviations} onClose={() => setShowAbbreviations(false)} />
     </div>
   );
 };

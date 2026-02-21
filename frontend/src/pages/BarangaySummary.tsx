@@ -1,10 +1,29 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
+import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
+import DownwardSelect from '../components/DownwardSelect';
+import AbbreviationGuideModal from '../components/AbbreviationGuideModal';
 import './BarangaySummary.css';
 
 const BARANGAYS = [
-  'Baclaran', 'Banay-Banay', 'Banlic', 'Bigaa', 'Butong', 'Casile', 'Diezmo',
-  'Pulo', 'Sala', 'San Isidro', 'Poblacion Uno', 'Poblacion Dos', 'Poblacion Tres',
+  'Baclaran',
+  'Banay-Banay',
+  'Banlic',
+  'Bigaa',
+  'Butong',
+  'Casile',
+  'Diezmo',
+  'Gulod',
+  'Mamatid',
+  'Marinig',
+  'Niugan',
+  'Pittland',
+  'Poblacion Dos',
+  'Poblacion Tres',
+  'Poblacion Uno',
+  'Pulo',
+  'Sala',
+  'San Isidro',
 ];
 
 const BARANGAY_DISPLAY: Record<string, string> = {
@@ -178,6 +197,17 @@ const BarangaySummary = () => {
   const [summary, setSummary] = useState<SurveySummary | null>(null);
   const [households, setHouseholds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAbbreviations, setShowAbbreviations] = useState(false);
+  const bnsOptions = getBnsOptions(filters.barangay);
+  const hasMultipleBns = bnsOptions.length > 1;
+
+  const handleBarangayFilterChange = (barangay: string) => {
+    setFilters((f) => ({
+      ...f,
+      barangay,
+      barangayNutritionScholar: resolveBnsForBarangay(barangay, f.barangayNutritionScholar),
+    }));
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -245,7 +275,18 @@ const BarangaySummary = () => {
   return (
     <div className="barangay-summary">
       <div className="summary-header">
-        <h1>FAMILY PROFILE Survey Summary {new Date().getFullYear()}</h1>
+        <div className="summary-title-row">
+          <h1>FAMILY PROFILE Survey Summary {new Date().getFullYear()}</h1>
+          <button
+            type="button"
+            className="abbr-info-btn"
+            onClick={() => setShowAbbreviations(true)}
+            aria-label="Show abbreviation guide"
+            title="Show abbreviation guide"
+          >
+            i
+          </button>
+        </div>
         <p>Republika ng Pilipinas | Lalawigan ng Laguna | Pamahalaang Lungsod ng CABUYAO | TANGGAPANG PANGLUNSOD NG NUTRISYON</p>
         <p className="summary-data-source">
           All summary records are based on data encoded or imported in the system. Totals, family size distribution, age/health counts, occupation and education summaries, and household practices are generated from household records saved via Encode Record or Import Data.
@@ -256,24 +297,34 @@ const BarangaySummary = () => {
           <div className="filters-grid">
             <div className="filter-field">
               <label>Barangay Nutrition Scholar</label>
-              <input
-                type="text"
-                value={filters.barangayNutritionScholar}
-                onChange={(e) => setFilters((f) => ({ ...f, barangayNutritionScholar: e.target.value }))}
-                placeholder="Enter BNS name"
-              />
+              {hasMultipleBns ? (
+                <select
+                  value={filters.barangayNutritionScholar}
+                  onChange={(e) => setFilters((f) => ({ ...f, barangayNutritionScholar: e.target.value }))}
+                >
+                  {bnsOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={filters.barangayNutritionScholar}
+                  onChange={(e) => setFilters((f) => ({ ...f, barangayNutritionScholar: e.target.value }))}
+                  placeholder="Enter BNS name"
+                />
+              )}
             </div>
             <div className="filter-field">
               <label>Barangay</label>
-              <select
+              <DownwardSelect
                 value={filters.barangay}
-                onChange={(e) => setFilters((f) => ({ ...f, barangay: e.target.value }))}
-              >
-                <option value="">All Barangays</option>
-                {BARANGAYS.map((b) => (
-                  <option key={b} value={b}>{BARANGAY_DISPLAY[b] || b}</option>
-                ))}
-              </select>
+                onChange={handleBarangayFilterChange}
+                options={[
+                  { value: '', label: 'All Barangays' },
+                  ...BARANGAYS.map((b) => ({ value: b, label: BARANGAY_DISPLAY[b] || b })),
+                ]}
+              />
             </div>
             <div className="filter-field">
               <label>Purok / Block / Street</label>
@@ -441,6 +492,7 @@ const BarangaySummary = () => {
           </div>
         </section>
       </div>
+      <AbbreviationGuideModal open={showAbbreviations} onClose={() => setShowAbbreviations(false)} />
     </div>
   );
 };

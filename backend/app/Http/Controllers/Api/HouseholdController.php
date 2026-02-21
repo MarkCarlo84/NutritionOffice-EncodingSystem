@@ -211,7 +211,9 @@ class HouseholdController extends Controller
     {
         $successful = 0;
         $failed = 0;
+        $skipped = 0;
         $errors = [];
+        $skippedLogs = [];
 
         try {
             // Check if request contains JSON data (from frontend Excel parsing)
@@ -224,11 +226,18 @@ class HouseholdController extends Controller
                         $members = $householdData['members'] ?? [];
                         unset($householdData['members']);
 
+                        // Normalize key text inputs before validation/checks
+                        foreach (['household_number', 'purok_sito', 'barangay', 'municipality_city', 'province'] as $key) {
+                            if (isset($householdData[$key]) && is_string($householdData[$key])) {
+                                $householdData[$key] = trim($householdData[$key]);
+                            }
+                        }
+
                         // Validate and create household
                         $validator = \Validator::make($householdData, [
                             'household_number' => 'required|string|max:255',
-                            'purok_sito' => 'nullable|string|max:255',
-                            'barangay' => 'nullable|string|max:255',
+                            'purok_sito' => 'required|string|max:255',
+                            'barangay' => 'required|string|max:255',
                             'municipality_city' => 'nullable|string|max:255',
                             'province' => 'nullable|string|max:255',
                             'family_living_in_house' => 'nullable|integer|min:0',
@@ -277,8 +286,8 @@ class HouseholdController extends Controller
                             ->where('barangay', $barangay)
                             ->first();
                         if ($existing) {
-                            $failed++;
-                            $errors[] = "Row " . ($index + 1) . ": Household number '{$validated['household_number']}' already exists in this barangay";
+                            $skipped++;
+                            $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}')";
                             continue;
                         }
 
@@ -313,13 +322,15 @@ class HouseholdController extends Controller
             }
 
             return response()->json([
-                'message' => "Import completed. {$successful} successful, {$failed} failed.",
+                'message' => "Import completed. {$successful} successful, {$failed} failed, {$skipped} skipped duplicates.",
                 'stats' => [
                     'total' => count($request->households ?? []),
                     'successful' => $successful,
                     'failed' => $failed,
+                    'skipped' => $skipped,
                 ],
                 'errors' => $errors,
+                'skipped_logs' => $skippedLogs,
             ]);
         } catch (\Exception $e) {
             return response()->json([
