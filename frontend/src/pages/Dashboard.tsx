@@ -143,7 +143,7 @@ const Dashboard = () => {
         <div className="metric-card">
           <h3 className="metric-title">Total Encoded</h3>
           <p className="metric-value">
-            {loading ? '—' : stats.totalEncoded.toString().padStart(3, '0')}
+            {loading ? '0' : stats.totalEncoded}
           </p>
           <p className="metric-subtitle">All Data</p>
         </div>
@@ -151,7 +151,7 @@ const Dashboard = () => {
         <div className="metric-card">
           <h3 className="metric-title">Barangays Covered</h3>
           <p className="metric-value">
-            {loading ? '—' : stats.barangaysCovered.toString().padStart(2, '0')}
+            {loading ? '0' : stats.barangaysCovered}
           </p>
           <p className="metric-subtitle">Active data sources</p>
         </div>

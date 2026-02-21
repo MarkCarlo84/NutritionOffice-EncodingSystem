@@ -13,7 +13,10 @@ export const BNS_COL_WIDTHS = [8, 10, 10, 12, 12, 8, 8, 10, 10, 10, 10, 10, 10, 
  * Build BNS Form header rows 1-10 (same as Import page Download Template).
  * Data rows start at row 11. Columns A-AH (1-34) only.
  */
-export function buildBnsFormHeader(worksheet: ExcelJS.Worksheet): void {
+export function buildBnsFormHeader(
+  worksheet: ExcelJS.Worksheet,
+  prefills?: { barangay?: string; municipalityCity?: string; province?: string }
+): void {
   // Row 1-3: Titles
   const titleRow1 = worksheet.addRow(['BNS Form No. 1A']);
   titleRow1.getCell(1).font = { bold: true, size: 14 };
@@ -40,6 +43,7 @@ export function buildBnsFormHeader(worksheet: ExcelJS.Worksheet): void {
   worksheet.mergeCells(5, 20, 5, 21); // Row 5: merge T and U
   worksheet.mergeCells(5, 22, 5, 34); // Row 5: merge V through AH
   row5.getCell(22).border = { bottom: { style: 'thin' as const } }; // underline on V–AH merged cell
+  row5.getCell(22).value = prefills?.municipalityCity ?? '';
   row5.font = { bold: true, size: 14 };
 
   const row6 = worksheet.addRow([]);
@@ -47,10 +51,12 @@ export function buildBnsFormHeader(worksheet: ExcelJS.Worksheet): void {
   worksheet.mergeCells(6, 1, 6, 2); // Row 6: merge A and B
   worksheet.mergeCells(6, 3, 6, 19); // Row 6: merge C through S
   row6.getCell(3).border = { bottom: { style: 'thin' as const } }; // underline on C–S merged cell
+  row6.getCell(3).value = prefills?.barangay ?? '';
   row6.getCell(20).value = 'Province:'; // Row 6 column T
   worksheet.mergeCells(6, 20, 6, 21); // Row 6: merge T and U
   worksheet.mergeCells(6, 22, 6, 34); // Row 6: merge V through AH
   row6.getCell(22).border = { bottom: { style: 'thin' as const } }; // underline on V–AH merged cell
+  row6.getCell(22).value = prefills?.province ?? '';
   row6.font = { bold: true, size: 14 };
 
   const row7 = worksheet.addRow([]);

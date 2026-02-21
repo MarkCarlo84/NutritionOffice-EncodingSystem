@@ -3,8 +3,24 @@
  */
 
 export const BARANGAYS = [
-  'Baclaran', 'Banay-Banay', 'Banlic', 'Bigaa', 'Butong', 'Casile', 'Diezmo',
-  'Pulo', 'Sala', 'San Isidro', 'Poblacion Uno', 'Poblacion Dos', 'Poblacion Tres',
+  'Baclaran',
+  'Banay-Banay',
+  'Banlic',
+  'Bigaa',
+  'Butong',
+  'Casile',
+  'Diezmo',
+  'Gulod',
+  'Mamatid',
+  'Marinig',
+  'Niugan',
+  'Pittland',
+  'Poblacion Dos',
+  'Poblacion Tres',
+  'Poblacion Uno',
+  'Pulo',
+  'Sala',
+  'San Isidro',
 ];
 
 export const BARANGAY_DISPLAY: Record<string, string> = {
