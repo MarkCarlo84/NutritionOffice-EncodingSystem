@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import axios from 'axios';
 import api from '../lib/api';
 import ExcelJS from 'exceljs';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   aggregateSummary,
   applyFilters,
   BARANGAYS,
   BARANGAY_DISPLAY,
-  type SurveySummary,
 } from '../utils/surveySummary';
 import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
 import DownwardSelect from '../components/DownwardSelect';
-import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
+import {  } from '../utils/bnsFormTemplate';
 import './ExportData.css';
 
 const OCC_LABELS = [
@@ -35,6 +35,12 @@ const ExportData = () => {
   const summaryBnsOptions = getBnsOptions(summaryFilters.barangay);
   const summaryHasMultipleBns = summaryBnsOptions.length > 1;
 
+  // Separate BNS Form filter state
+  const [bnsFormFilters, setBnsFormFilters] = useState({
+    barangay: '',
+    purokSitio: '',
+  });
+
   const handleSummaryBarangayChange = (barangay: string) => {
     setSummaryFilters((f) => ({
       ...f,
@@ -43,146 +49,116 @@ const ExportData = () => {
     }));
   };
 
-  const handleExport = async (format: 'json' | 'csv' | 'excel') => {
+  const handleBnsFormBarangayChange = (barangay: string) => {
+    setBnsFormFilters((f) => ({
+      ...f,
+      barangay,
+      purokSitio: '',
+    }));
+  };
+
+  const handleExportBnsPdf = async () => {
     setExporting(true);
     setMessage(null);
-
     try {
-      const response = await api.get('/households', { params: { per_page: 10000 } });
-      const households = response.data.data || [];
-
-      if (format === 'json') {
-        const dataStr = JSON.stringify(households, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `household-data-${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
-        setMessage({ type: 'success', text: 'Data exported successfully as JSON!' });
-      } else if (format === 'csv') {
-        // CSV export
-        const headers = [
-          'Household Number',
-          'Barangay',
-          'Municipality/City',
-          'Province',
-          'Number of Members',
-          'NHTS Group',
-          'Indigenous Group',
-        ];
-        
-        const rows = households.map((h: any) => [
-          h.household_number || '',
-          h.barangay || '',
-          h.municipality_city || '',
-          h.province || '',
-          h.number_of_members || 0,
-          h.nhts_household_group || '',
-          h.indigenous_group || '',
-        ]);
-
-        const csvContent = [
-          headers.join(','),
-          ...rows.map((row: any[]) => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-
-        const dataBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `household-data-${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-        setMessage({ type: 'success', text: 'Data exported successfully as CSV!' });
-      } else if (format === 'excel') {
-        // Excel (BNS Form) - same layout as Import page Download Template: rows 1-10 header, 3 rows per household
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Household Data', { properties: { defaultRowHeight: 18 } });
-        buildBnsFormHeader(worksheet);
-
-        const thinBorder = {
-          top: { style: 'thin' as const },
-          left: { style: 'thin' as const },
-          bottom: { style: 'thin' as const },
-          right: { style: 'thin' as const },
-        };
-
-        households.forEach((h: any) => {
-          const father = h.members?.find((m: any) => m.role === 'father');
-          const mother = h.members?.find((m: any) => m.role === 'mother');
-          const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
-          const fpVal = h.couple_practicing_family_planning === true ? 'Yes' : h.couple_practicing_family_planning === false ? 'No' : '';
-          const saltVal = h.using_iodized_salt ? 'Yes' : '';
-          const riceVal = h.using_iron_fortified_rice ? 'Yes' : '';
-
-          // Row 1 (Fa): HH data + age counts + Fa name, occupation, edu + household C29-C34
-          const r1 = worksheet.addRow([]);
-          r1.getCell(1).value = h.household_number || '';
-          r1.getCell(2).value = h.family_living_in_house ?? '';
-          r1.getCell(3).value = h.number_of_members ?? '';
-          r1.getCell(4).value = h.nhts_household_group || '';
-          r1.getCell(5).value = h.indigenous_group || '';
-          const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
-          for (let c = 6; c <= 25; c++) r1.getCell(c).value = (h as any)[ageFields[c - 6]] ?? 0;
-          r1.getCell(26).value = father?.name || '(Fa)';
-          r1.getCell(27).value = father?.occupation || '';
-          r1.getCell(28).value = father?.educational_attainment || '';
-          r1.getCell(29).value = fpVal;
-          r1.getCell(30).value = h.toilet_type || '';
-          r1.getCell(31).value = h.water_source || '';
-          r1.getCell(32).value = h.food_production_activity || '';
-          r1.getCell(33).value = saltVal;
-          r1.getCell(34).value = riceVal;
-
-          // Row 2 (Mo)
-          const r2 = worksheet.addRow([]);
-          r2.getCell(26).value = mother?.name || '(Mo)';
-          r2.getCell(27).value = mother?.occupation || '';
-          r2.getCell(28).value = mother?.educational_attainment || '';
-
-          // Row 3 (Ca)
-          const r3 = worksheet.addRow([]);
-          r3.getCell(26).value = caregiver?.name || '(Ca)';
-          r3.getCell(27).value = caregiver?.occupation || '';
-          r3.getCell(28).value = caregiver?.educational_attainment || '';
-
-          for (const row of [r1, r2, r3]) {
-            for (let c = 1; c <= 34; c++) {
-              row.getCell(c).border = thinBorder;
-              if (c <= 25 || (c >= 29 && c <= 34)) row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
-            }
-          }
-
-          const startRow = worksheet.rowCount - 2;
-          const endRow = worksheet.rowCount;
-          worksheet.mergeCells(startRow, 1, endRow, 1);
-          for (let c = 2; c <= 25; c++) worksheet.mergeCells(startRow, c, endRow, c);
-          for (let c = 29; c <= 34; c++) worksheet.mergeCells(startRow, c, endRow, c);
-        });
-
-        applyBnsColumnWidths(worksheet);
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Nutrition BNS Form ${new Date().toISOString().split('T')[0]}.xlsx`;
-        link.click();
-        URL.revokeObjectURL(url);
-        setMessage({ type: 'success', text: 'Data exported successfully as Excel (BNS Form format)!' });
-      }
-    } catch (error: any) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.message || 'Error exporting data' 
+      const res = await api.get('/households', { params: { per_page: 10000 } });
+      const list = res.data?.data ?? res.data ?? [];
+      let households = Array.isArray(list) ? list : [];
+      // Use separate BNS Form filters
+      households = applyFilters(households, {
+        barangay: bnsFormFilters.barangay,
+        purokBlockStreet: bnsFormFilters.purokSitio,
+        surveyYear: '',
+        surveyPeriodFrom: '',
+        surveyPeriodTo: '',
       });
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageWidth = (doc.internal.pageSize as any).getWidth();
+
+      // Header
+      doc.setFontSize(12);
+      doc.text('HOUSEHOLD PROFILE', pageWidth / 2, 30, { align: 'center' });
+      const barangayLabel = bnsFormFilters.barangay ? (BARANGAY_DISPLAY[bnsFormFilters.barangay] || bnsFormFilters.barangay) : 'All Barangays';
+      doc.setFontSize(9);
+      doc.text(`Barangay: ${barangayLabel}`, 40, 50);
+      doc.text(`Purok/Sitio: ${bnsFormFilters.purokSitio || '—'}`, 300, 50);
+
+      // Build table head (C1..C34)
+      const head = [[
+        'C1','C2','C3','C4','C5',
+        'C6','C7','C8','C9','C10','C11','C12','C13','C14','C15','C16','C17','C18','C19','C20','C21','C22','C23','C24','C25',
+        'C26','C27','C28','C29','C30','C31','C32','C33','C34'
+      ]];
+
+      const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
+
+      const body: any[] = [];
+      households.forEach((h: any) => {
+        const father = h.members?.find((m: any) => m.role === 'father');
+        const mother = h.members?.find((m: any) => m.role === 'mother');
+        const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
+        const fpVal = h.couple_practicing_family_planning === true ? 'Yes' : h.couple_practicing_family_planning === false ? 'No' : '';
+        const saltVal = h.using_iodized_salt ? 'Yes' : '';
+        const riceVal = h.using_iron_fortified_rice ? 'Yes' : '';
+
+        const r1: any[] = [];
+        r1[0] = h.household_number || '';
+        r1[1] = h.family_living_in_house ?? '';
+        r1[2] = h.number_of_members ?? '';
+        r1[3] = h.nhts_household_group || '';
+        r1[4] = h.indigenous_group || '';
+        for (let i = 0; i < 20; i++) r1[5 + i] = (h as any)[ageFields[i]] ?? 0;
+        r1[25] = father?.name || '(Fa)';
+        r1[26] = father?.occupation || '';
+        r1[27] = father?.educational_attainment || '';
+        r1[28] = fpVal;
+        r1[29] = h.toilet_type || '';
+        r1[30] = h.water_source || '';
+        r1[31] = h.food_production_activity || '';
+        r1[32] = saltVal;
+        r1[33] = riceVal;
+
+        const r2 = new Array(34).fill('');
+        r2[25] = mother?.name || '(Mo)';
+        r2[26] = mother?.occupation || '';
+        r2[27] = mother?.educational_attainment || '';
+
+        const r3 = new Array(34).fill('');
+        r3[25] = caregiver?.name || '(Ca)';
+        r3[26] = caregiver?.occupation || '';
+        r3[27] = caregiver?.educational_attainment || '';
+
+        body.push(r1);
+        body.push(r2);
+        body.push(r3);
+      });
+
+      autoTable(doc as any, {
+        head,
+        body,
+        startY: 70,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [220,220,220] },
+        theme: 'grid',
+        columnStyles: {
+          // make columns narrow to fit
+          0: { cellWidth: 30 },
+        }
+      });
+
+      const fileName = `Nutrition_BNS_Form_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      setMessage({ type: 'success', text: `BNS Form PDF generated (${households.length} households).` });
+    } catch (err: any) {
+      console.error('handleExportBnsPdf error:', err);
+      setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'Error generating BNS PDF' });
     } finally {
       setExporting(false);
     }
   };
+
+  
 
   const handleExportSurveySummary = async () => {
     setExporting(true);
@@ -250,7 +226,7 @@ const ExportData = () => {
       r5.getCell(1).alignment = { horizontal: 'center' };
 
       ws.addRow([]);
-      const r7 = ws.addRow(['BARANGAY', '', 'PUROK / BLOCK / STREET', '', 'SURVEY PERIOD & YEAR', '']);
+      const r7 = ws.addRow(['BARANGAY', '', 'PUROK / BLOCK / SITIO', '', 'SURVEY PERIOD & YEAR', '']);
       r7.getCell(1).value = 'BARANGAY';
       r7.getCell(2).value = s.basic.barangay;
       r7.getCell(3).value = 'PUROK / BLOCK / STREET';
@@ -361,6 +337,261 @@ const ExportData = () => {
     }
   };
 
+  const handleExportSurveySummaryPdf = async () => {
+    setExporting(true);
+    setMessage(null);
+    try {
+      const res = await api.get('/households', { params: { per_page: 10000 } });
+      const list = res.data?.data ?? res.data ?? [];
+      const households = Array.isArray(list) ? list : [];
+      const filtered = applyFilters(households, {
+        barangay: summaryFilters.barangay,
+        purokBlockStreet: summaryFilters.purokBlockStreet,
+        surveyYear: summaryFilters.surveyYear,
+        surveyPeriodFrom: summaryFilters.surveyPeriodFrom,
+        surveyPeriodTo: summaryFilters.surveyPeriodTo,
+      });
+      const s = aggregateSummary(filtered);
+      s.basic.bns = summaryFilters.bns || '—';
+      s.basic.barangay = summaryFilters.barangay ? (BARANGAY_DISPLAY[summaryFilters.barangay] || summaryFilters.barangay) : 'All Barangays';
+      s.basic.purokBlockStreet = summaryFilters.purokBlockStreet || '—';
+      if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `${summaryFilters.surveyPeriodFrom} - ${summaryFilters.surveyPeriodTo}`;
+      } else if (summaryFilters.surveyPeriodFrom) {
+        s.basic.surveyPeriod = `From ${summaryFilters.surveyPeriodFrom}`;
+      } else if (summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `To ${summaryFilters.surveyPeriodTo}`;
+      } else {
+        s.basic.surveyPeriod = summaryFilters.surveyYear ? summaryFilters.surveyYear : '—';
+      }
+      s.basic.surveyYear = summaryFilters.surveyYear || new Date().getFullYear().toString();
+
+      const year = new Date().getFullYear();
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageWidth = (doc.internal.pageSize as any).getWidth();
+      const pageHeight = (doc.internal.pageSize as any).getHeight();
+
+      // Header block (centered) - smaller fonts for single-page fit
+      const headerTop = 14;
+      doc.setFontSize(9);
+      doc.text('Republika ng Pilipinas', pageWidth / 2, headerTop, { align: 'center' });
+      doc.text('Lalawigan ng Laguna', pageWidth / 2, headerTop + 12, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text('Pamahalaang Lungsod ng CABUYAO', pageWidth / 2, headerTop + 24, { align: 'center' });
+      doc.text('TANGGAPANG PANLUNGSOD NG NUTRISYON', pageWidth / 2, headerTop + 36, { align: 'center' });
+      doc.setFontSize(12);
+      const titleY = headerTop + 48;
+      doc.text(`FAMILY PROFILE Survey Summary ${year}`, pageWidth / 2, titleY, { align: 'center' });
+
+      // Draw three main column boxes with smaller margins
+      const smallMargin = 16;
+      const colW = (pageWidth - smallMargin * 2) / 3;
+      const colX = [smallMargin, smallMargin + colW, smallMargin + 2 * colW];
+      const colY = 96;
+      const colH = pageHeight - colY - smallMargin;
+      doc.setLineWidth(0.5);
+      for (let i = 0; i < 3; i++) {
+        doc.rect(colX[i], colY, colW, colH);
+      }
+
+      // Top labels and values (single-line layout)
+      const labelY = colY - 6;
+      doc.setFontSize(9.5);
+      // Prepare and truncate long values to avoid overlap
+      const bnsText = String(s.basic.bns || '—');
+      let barangayText = String(s.basic.barangay || '—');
+      let purokText = String(s.basic.purokBlockStreet || '—');
+      const surveyText = String(s.basic.surveyPeriod || s.basic.surveyYear || '—');
+      const maxMidLen = 28;
+      if (barangayText.length > maxMidLen) barangayText = barangayText.slice(0, maxMidLen) + '...';
+      if (purokText.length > maxMidLen) purokText = purokText.slice(0, maxMidLen) + '...';
+
+      // Left: BNS
+      doc.text(`BARANGAY NUTRITION SCHOLAR: ${bnsText}`, colX[0] + 6, labelY);
+      // Middle: Barangay left-aligned in middle column
+      doc.text(`BARANGAY: ${barangayText}`, colX[1] + 6, labelY);
+      // Middle: Purok right-aligned in middle column to avoid collision
+      doc.text(`PUROK / BLOCK / SITIO: ${purokText}`, colX[1] + colW + 6, labelY, { align: 'right' });
+      // Right: Survey period & year
+      doc.text(`SURVEY PERIOD & YEAR: ${surveyText}`, colX[2] + colW - 46, labelY, { align: 'right' });
+
+      // normalize columns: single starting Y and consistent line height
+      const colStartY = colY + 10;
+      const lineH = 9;
+
+      // helper: write a right-aligned value and draw an underline under it
+      const drawValue = (xRight: number, yPos: number, val: any, underlineWidth = 36) => {
+        const text = String(val ?? '');
+        const xEnd = xRight - 2;
+        const xStart = xEnd - underlineWidth;
+        const centerX = (xStart + xEnd) / 2;
+        const textWidth = (doc as any).getTextWidth ? (doc as any).getTextWidth(text) : text.length * 6;
+        const textX = centerX - textWidth / 2;
+        doc.text(text, textX, yPos);
+        const lineY = yPos + 2;
+        doc.setLineWidth(0.5);
+        doc.line(xStart, lineY, xEnd, lineY);
+      };
+
+      // Left column
+      let yLeft = colStartY;
+      doc.setFontSize(8);
+      const leftLines2 = [
+        ['Total No. of Households', String(s.totals.households ?? '')],
+        ['Total No. of Families', String(s.totals.families ?? '')],
+        ['Family Size: more than 10', String(s.familySize.moreThan10 ?? 0)],
+        ['Family Size: 8-10', String(s.familySize.n8to10 ?? 0)],
+        ['Family Size: 6-7', String(s.familySize.n6to7 ?? 0)],
+        ['Family Size: 2-5', String(s.familySize.n2to5 ?? 0)],
+        ['Family Size: 1', String(s.familySize.n1 ?? 0)],
+        ['Total No. of Purok/Block/Street', String(s.totals.purokBlockStreet ?? '')],
+        ['Total Population', String(s.totals.population ?? '')],
+      ];
+      leftLines2.forEach(([label, val]) => {
+        doc.text(String(label), colX[0] + 8, yLeft);
+        drawValue(colX[0] + colW - 20, yLeft, val, 28);
+        yLeft += lineH;
+      });
+
+      yLeft += lineH;
+      doc.text('No. of Family Members by Age Classification & Health Risk Group:', colX[0] + 8, yLeft);
+      yLeft += lineH;
+      const ageRows2 = [
+        ['Newborn 0-28 days', s.ageHealth.newborn ?? 0],
+        ['Infants 29 days - 11 mos', s.ageHealth.infants ?? 0],
+        ['Under-five 1-4 years old', s.ageHealth.underFive ?? 0],
+        ['Children 5-9 years old', s.ageHealth.children5_9 ?? 0],
+        ['Adolescents 10-19 y.o.', s.ageHealth.adolescence ?? 0],
+        ['Pregnant', s.ageHealth.pregnant ?? 0],
+        ['Adolescent Pregnant', s.ageHealth.adolescentPregnant ?? 0],
+        ['Post-Partum', s.ageHealth.postPartum ?? 0],
+        ['15-49 y.o. (non pregnant & non-PP)', s.ageHealth.women15_49 ?? 0],
+        ['Adult 20-59 y.o.', s.ageHealth.adult ?? 0],
+        ['Senior Citizens', s.ageHealth.seniorCitizens ?? 0],
+        ['Persons with Disability', s.ageHealth.pwd ?? 0],
+      ];
+      ageRows2.forEach(([label, val]) => {
+        doc.text(String(label), colX[0] + 8, yLeft);
+        drawValue(colX[0] + colW - 18, yLeft, val, 28);
+        yLeft += lineH;
+      });
+
+      yLeft += lineH;
+      doc.text('Father Occupation', colX[0] + 8, yLeft);
+      yLeft += lineH;
+      OCC_LABELS.forEach((lbl, i) => {
+        doc.text(String(`${i + 1}. ${lbl}`), colX[0] + 8, yLeft);
+        drawValue(colX[0] + colW - 18, yLeft, s.fatherOcc?.[i] ?? 0, 28);
+        yLeft += lineH;
+      });
+      yLeft += lineH;
+      doc.text('Father Educational Attainment', colX[0] + 8, yLeft);
+      yLeft += lineH;
+      ED_LABELS.forEach((lbl, i) => {
+        doc.text(String(lbl), colX[0] + 8, yLeft);
+        drawValue(colX[0] + colW - 18, yLeft, s.fatherEd?.[i] ?? 0, 28);
+        yLeft += lineH;
+      });
+
+      // Middle column
+      let yMid = colStartY;
+      doc.setFontSize(8);
+      doc.text('Mother - Occupation', colX[1] + 6, yMid);
+      yMid += lineH;
+      OCC_LABELS.forEach((lbl, i) => {
+        doc.text(String(`${i + 1}. ${lbl}`), colX[1] + 6, yMid);
+        drawValue(colX[1] + colW - 16, yMid, s.motherOcc?.[i] ?? 0, 28);
+        yMid += lineH;
+      });
+      yMid += lineH;
+      doc.text('Mother - Educational Attainment', colX[1] + 6, yMid);
+      yMid += lineH;
+      ED_LABELS.forEach((lbl, i) => {
+        doc.text(String(lbl), colX[1] + 6, yMid);
+        drawValue(colX[1] + colW - 16, yMid, s.motherEd?.[i] ?? 0, 28);
+        yMid += lineH;
+      });
+
+      yMid += lineH;
+      doc.text('Caregiver - Occupation', colX[1] + 6, yMid);
+      yMid += lineH;
+      OCC_LABELS.forEach((lbl, i) => {
+        doc.text(String(`${i + 1}. ${lbl}`), colX[1] + 6, yMid);
+        drawValue(colX[1] + colW - 16, yMid, s.caregiverOcc?.[i] ?? 0, 28);
+        yMid += lineH;
+      });
+      yMid += lineH;
+      doc.text('Caregiver - Educational Attainment', colX[1] + 6, yMid);
+      yMid += lineH;
+      ED_LABELS.forEach((lbl, i) => {
+        doc.text(String(lbl), colX[1] + 6, yMid);
+        drawValue(colX[1] + colW - 16, yMid, s.caregiverEd?.[i] ?? 0, 28);
+        yMid += lineH;
+      });
+
+      // Right column
+      let yRight = colStartY;
+      doc.setFontSize(8);
+      doc.text('Total No. of Couple Practicing Family Planning', colX[2] + 8, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.coupleFP ?? 0, 28);
+      yRight += lineH;
+      doc.text('Households with:', colX[2] + 8, yRight);
+      yRight += lineH;
+      doc.text('Toilet Type:', colX[2] + 8, yRight);
+      yRight += lineH;
+      doc.text('Improved Sanitation', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.toiletImproved ?? 0, 28);
+      yRight += lineH;
+      doc.text('Shared Facility', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.toiletShared ?? 0, 28);
+      yRight += lineH;
+      doc.text('Unimproved', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.toiletUnimproved ?? 0, 28);
+      yRight += lineH;
+      doc.text('Open defecation', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.toiletOpen ?? 0, 28);
+      yRight += lineH;
+      doc.text('Water Source:', colX[2] + 8, yRight);
+      yRight += lineH;
+      doc.text('Improved water source', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.waterImproved ?? 0, 28);
+      yRight += lineH;
+      doc.text('Unimproved water source', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.waterUnimproved ?? 0, 28);
+      yRight += lineH;
+      doc.text('Food Production:', colX[2] + 8, yRight);
+      yRight += lineH;
+      doc.text('VG_Vegetable garden', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.foodVG ?? 0, 28);
+      yRight += lineH;
+      doc.text('FT_Fruit', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.foodFruit ?? 0, 28);
+      yRight += lineH;
+      doc.text('PL_Poultry/livestock', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.foodPL ?? 0, 28);
+      yRight += lineH;
+      doc.text('FP_Fishpond', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.foodFP ?? 0, 28);
+      yRight += lineH;
+      doc.text('Households using:', colX[2] + 8, yRight);
+      yRight += lineH;
+      doc.text('Iodized salt', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.iodizedSalt ?? 0, 28);
+      yRight += lineH;
+      doc.text('Iron-Fortified Rice', colX[2] + 14, yRight);
+      drawValue(colX[2] + colW - 18, yRight, s.practices.ironFortifiedRice ?? 0, 28);
+
+      const fileName = `Family-Profile-Survey-Summary-${year}-${summaryFilters.barangay || 'All'}.pdf`;
+      doc.save(fileName);
+      setMessage({ type: 'success', text: 'Family Profile Survey Summary exported as PDF (form layout).' });
+    } catch (err: any) {
+      console.error('handleExportSurveySummaryPdf error:', err);
+      setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'Error exporting summary to PDF' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="export-data">
       <div className="export-header">
@@ -376,7 +607,7 @@ const ExportData = () => {
 
       <div className="export-options">
         <div className="export-card export-card-summary">
-          <h2>Family Profile Survey Summary (Excel)</h2>
+          <h2>Family Profile Survey Summary </h2>
           <p>Export aggregated data in the form layout matching the &quot;FAMILY PROFILE Survey Summary&quot; sheet. Use filters to limit by barangay, purok, and survey period. Data is computed from household records.</p>
           <div className="summary-filters-inline">
             <div className="filter-row">
@@ -419,21 +650,55 @@ const ExportData = () => {
               <input type="date" value={summaryFilters.surveyPeriodTo} onChange={(e) => setSummaryFilters((f) => ({ ...f, surveyPeriodTo: e.target.value }))} />
             </div>
           </div>
-          <button type="button" className="export-btn primary" disabled={exporting} onClick={handleExportSurveySummary}>
-            {exporting ? 'Exporting...' : 'Export Family Profile Summary (Excel)'}
-          </button>
+          <div className="export-actions">
+            <button type="button" className="export-btn primary" disabled={exporting} onClick={handleExportSurveySummary}>
+              {exporting ? 'Exporting...' : 'Export Family Profile Summary (Excel)'}
+            </button>
+            <button type="button" className="export-btn primary" disabled={exporting} onClick={handleExportSurveySummaryPdf}>
+              {exporting ? 'Exporting...' : 'Export Family Profile Summary (PDF)'}
+            </button>
+          </div>
         </div>
 
-        <div className="export-card">
-          <h2>Excel Format (BNS Form)</h2>
-          <p>Export household data as Excel file matching the BNS Form No. 1A structure with all columns (C1-C34).</p>
-          <button 
-            onClick={() => handleExport('excel')} 
+        <div className="export-card export-card-bns">
+          <h2>BNS Form (PDF)</h2>
+          <p>Download printable BNS Form (PDF). Filter by barangay and purok/sitio to generate the form for specific areas.</p>
+          
+          {/* BNS Form Filter Section */}
+          <div className="bns-form-filters">
+            <div className="filter-row">
+              <label>Barangay <span className="required">*</span></label>
+              <DownwardSelect
+                value={bnsFormFilters.barangay}
+                onChange={handleBnsFormBarangayChange}
+                options={[
+                  { value: '', label: 'Select Barangay' },
+                  ...BARANGAYS.map((b) => ({ value: b, label: BARANGAY_DISPLAY[b] || b })),
+                ]}
+              />
+            </div>
+            <div className="filter-row">
+              <label>Purok / Sitio</label>
+              <input 
+                type="text" 
+                value={bnsFormFilters.purokSitio} 
+                onChange={(e) => setBnsFormFilters((f) => ({ ...f, purokSitio: e.target.value }))}
+                placeholder="Enter Purok/Sitio (optional)"
+                disabled={!bnsFormFilters.barangay}
+              />
+            </div>
+          </div>
+          
+          <button
+            onClick={handleExportBnsPdf}
             className="export-btn primary"
-            disabled={exporting}
+            disabled={exporting || !bnsFormFilters.barangay}
           >
-            {exporting ? 'Exporting...' : 'Export as Excel (BNS Form)'}
+            {exporting ? 'Exporting...' : 'Download BNS Form (PDF)'}
           </button>
+          {!bnsFormFilters.barangay && (
+            <p className="filter-hint">Please select a barangay to generate the BNS Form</p>
+          )}
         </div>
 
       </div>

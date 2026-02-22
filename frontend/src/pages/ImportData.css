@@ -94,8 +94,9 @@
 
 .import-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(280px, 420px) 1fr;
   gap: 24px;
+  align-items: start;
 }
 
 .import-card {
