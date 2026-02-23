@@ -1,6 +1,6 @@
 .export-data {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
 }
 
 .export-header {
@@ -40,17 +40,10 @@
 }
 
 .export-options {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
   gap: 24px;
-  align-items: flex-start;
-}
-
-.export-card-summary {
-  flex: 7;
-}
-
-.export-card-bns {
-  flex: 3;
+  align-items: stretch;
 }
 
 @media (max-width: 768px) {
