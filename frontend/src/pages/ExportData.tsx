@@ -11,7 +11,7 @@ import {
 } from '../utils/surveySummary';
 import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
 import DownwardSelect from '../components/DownwardSelect';
-import {  } from '../utils/bnsFormTemplate';
+import { BNS_COL_WIDTHS } from '../utils/bnsFormTemplate';
 import './ExportData.css';
 
 const OCC_LABELS = [
@@ -75,81 +75,292 @@ const ExportData = () => {
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageWidth = (doc.internal.pageSize as any).getWidth();
+      const pageHeight = (doc.internal.pageSize as any).getHeight();
 
-      // Header
+      // ===== Header styled like sample image =====
+      const margin = 16;
+      doc.setFontSize(8);
+      doc.text('BNS Form No. 1A', margin, 16);
+      doc.text('Philippine Plan of Action for Nutrition', margin, 28);
       doc.setFontSize(12);
-      doc.text('HOUSEHOLD PROFILE', pageWidth / 2, 30, { align: 'center' });
-      const barangayLabel = bnsFormFilters.barangay ? (BARANGAY_DISPLAY[bnsFormFilters.barangay] || bnsFormFilters.barangay) : 'All Barangays';
-      doc.setFontSize(9);
-      doc.text(`Barangay: ${barangayLabel}`, 40, 50);
-      doc.text(`Purok/Sitio: ${bnsFormFilters.purokSitio || '—'}`, 300, 50);
+      doc.text('HOUSEHOLD PROFILE', pageWidth / 2, 22, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text(`Edited ${new Date().toLocaleDateString()}`, pageWidth - margin, 16, { align: 'right' });
 
-      // Build table head (C1..C34)
-      const head = [[
-        'C1','C2','C3','C4','C5',
-        'C6','C7','C8','C9','C10','C11','C12','C13','C14','C15','C16','C17','C18','C19','C20','C21','C22','C23','C24','C25',
-        'C26','C27','C28','C29','C30','C31','C32','C33','C34'
-      ]];
+      const barangayLabel = bnsFormFilters.barangay ? (BARANGAY_DISPLAY[bnsFormFilters.barangay] || bnsFormFilters.barangay) : '';
+      // Lines Purok/Sitio, Barangay, Municipality/City, Province
+      const lineY1 = 44;
+      const lineY2 = 60;
+      doc.setFontSize(9);
+      // Row 1 labels
+      doc.text('Purok/Sitio:', margin, lineY1);
+      doc.text('Municipality/City:', pageWidth / 2 + 16, lineY1);
+      // Row 2 labels
+      doc.text('Barangay:', margin, lineY2);
+      doc.text('Province:', pageWidth / 2 + 16, lineY2);
+      // Underlines
+      const drawUnderline = (x1: number, y: number, x2: number, text?: string) => {
+        doc.setLineWidth(0.5);
+        doc.line(x1, y + 2, x2, y + 2);
+        if (text) {
+          doc.setFontSize(9);
+          doc.text(text, x1 + 2, y);
+        }
+      };
+      drawUnderline(margin + 70, lineY1, pageWidth / 2 - 20, bnsFormFilters.purokSitio || '');
+      drawUnderline(pageWidth / 2 + 120, lineY1, pageWidth - margin, 'Cabuyao');
+      drawUnderline(margin + 56, lineY2, pageWidth / 2 - 20, barangayLabel);
+      drawUnderline(pageWidth / 2 + 80, lineY2, pageWidth - margin, 'Laguna');
+
+      // ===== Table layout similar to form header rows =====
+      const contentWidth = pageWidth - margin * 2;
+      const totalExcelW = BNS_COL_WIDTHS.slice(0, 34).reduce((a, b) => a + b, 0);
+      const scale = contentWidth / totalExcelW;
+      const columns = Array.from({ length: 34 }, (_, i) => ({
+        header: `C${i + 1}`,
+        dataKey: `C${i + 1}`,
+      }));
+      // Column widths must sum exactly to contentWidth so C34's right edge aligns with the table border
+      const colWidths = BNS_COL_WIDTHS.slice(0, 34).map((w) => Math.max(8, Math.floor(w * scale)));
+      const widthSum = colWidths.reduce((a, b) => a + b, 0);
+      const remainder = contentWidth - widthSum;
+      if (remainder !== 0) colWidths[33] = Math.max(8, colWidths[33] + remainder); // give remainder to C34
+      const columnStyles: Record<number, any> = {};
+      colWidths.forEach((w, i) => {
+        columnStyles[i] = { cellWidth: w };
+      });
+
+      // YES/NO strictly from data
+      const yesNo = (val: any): string => {
+        if (val === true || val === 1 || (typeof val === 'string' && val.toLowerCase() === 'yes')) return 'Yes';
+        if (val === false || val === 0 || (typeof val === 'string' && val.toLowerCase() === 'no')) return 'No';
+        return '';
+      };
 
       const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
 
+      // Build body: one row per household; row height varies so names fit (Fa/Mo/Ca in separate bands)
+      const startY = 78;
+      const availableH = pageHeight - startY - 16;
+      const minRowH = 42; // height for 3 bands so names fit and stay readable
+      const nameFontSize = 4.5; // names: bigger so Father/Mother/Caregiver are readable
+      const lineHeightPt = 6.5; // line height for name wrapping at larger font
+      const wC26 = colWidths[25]; // C26 column width in pt
+      const approxCharWidth = 2.2; // pt per char at nameFontSize
+      const charsPerLineC26 = Math.max(8, Math.floor(wC26 / approxCharWidth));
+      const nameTopInset = 3; // space from top of band so text isn't clipped
+
+      const stripRolePrefix = (s?: string) => {
+        if (!s) return '';
+        let v = (s || '').trim();
+        ['(Fa)', '(Mo)', '(Ca)'].forEach((tg) => {
+          if (v.startsWith(tg)) v = v.substring(tg.length).trim();
+        });
+        return v;
+      };
+      const faMoCaLine = (tag: string, name?: string) => {
+        const v = stripRolePrefix(name);
+        return v ? `${tag} ${v}` : tag;
+      };
+      const linesNeeded = (text: string, charsPerLine: number) => Math.max(1, Math.ceil((text || '').length / charsPerLine));
+
       const body: any[] = [];
+      const bodyLinesByRow: { c26: string[]; c27: string[]; c28: string[] }[] = [];
+      const rowHeights: number[] = [];
+      const bodyBandHeights: number[][] = []; // [band0, band1, band2] per row so names fit
+      let usedHeight = 0;
+
       households.forEach((h: any) => {
         const father = h.members?.find((m: any) => m.role === 'father');
         const mother = h.members?.find((m: any) => m.role === 'mother');
         const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
-        const fpVal = h.couple_practicing_family_planning === true ? 'Yes' : h.couple_practicing_family_planning === false ? 'No' : '';
-        const saltVal = h.using_iodized_salt ? 'Yes' : '';
-        const riceVal = h.using_iron_fortified_rice ? 'Yes' : '';
 
-        const r1: any[] = [];
-        r1[0] = h.household_number || '';
-        r1[1] = h.family_living_in_house ?? '';
-        r1[2] = h.number_of_members ?? '';
-        r1[3] = h.nhts_household_group || '';
-        r1[4] = h.indigenous_group || '';
-        for (let i = 0; i < 20; i++) r1[5 + i] = (h as any)[ageFields[i]] ?? 0;
-        r1[25] = father?.name || '(Fa)';
-        r1[26] = father?.occupation || '';
-        r1[27] = father?.educational_attainment || '';
-        r1[28] = fpVal;
-        r1[29] = h.toilet_type || '';
-        r1[30] = h.water_source || '';
-        r1[31] = h.food_production_activity || '';
-        r1[32] = saltVal;
-        r1[33] = riceVal;
+        const nameLines: string[] = [
+          faMoCaLine('(Fa)', father?.name),
+          faMoCaLine('(Mo)', mother?.name),
+          faMoCaLine('(Ca)', caregiver?.name),
+        ];
+        const occLines: string[] = [
+          father?.occupation != null && father?.occupation !== '' ? String(father.occupation) : '',
+          mother?.occupation != null && mother?.occupation !== '' ? String(mother.occupation) : '',
+          caregiver?.occupation != null && caregiver?.occupation !== '' ? String(caregiver.occupation) : '',
+        ];
+        const edLines: string[] = [
+          father?.educational_attainment != null && father?.educational_attainment !== '' ? String(father.educational_attainment) : '',
+          mother?.educational_attainment != null && mother?.educational_attainment !== '' ? String(mother.educational_attainment) : '',
+          caregiver?.educational_attainment != null && caregiver?.educational_attainment !== '' ? String(caregiver.educational_attainment) : '',
+        ];
 
-        const r2 = new Array(34).fill('');
-        r2[25] = mother?.name || '(Mo)';
-        r2[26] = mother?.occupation || '';
-        r2[27] = mother?.educational_attainment || '';
+        // Per-band height: each of the 3 rows (Fa, Mo, Ca) must fit name (may wrap)
+        const bandHeights = [0, 1, 2].map((i) => {
+          const nLines = linesNeeded(nameLines[i], charsPerLineC26);
+          return Math.max(14, nLines * lineHeightPt + 2); // min 14pt per band so readable names fit
+        });
+        const rowH = Math.max(minRowH, bandHeights[0] + bandHeights[1] + bandHeights[2]);
+        if (usedHeight + rowH > availableH && body.length > 0) return; // no more room
+        usedHeight += rowH;
+        rowHeights.push(rowH);
+        bodyBandHeights.push(bandHeights);
 
-        const r3 = new Array(34).fill('');
-        r3[25] = caregiver?.name || '(Ca)';
-        r3[26] = caregiver?.occupation || '';
-        r3[27] = caregiver?.educational_attainment || '';
+        const r: Record<string, any> = {};
+        r['C1'] = h.household_number || '';
+        r['C2'] = h.family_living_in_house ?? '';
+        r['C3'] = h.number_of_members ?? '';
+        r['C4'] = h.nhts_household_group || '';
+        r['C5'] = h.indigenous_group || '';
+        ageFields.forEach((f, idx) => { r[`C${6 + idx}`] = (h as any)[f] ?? 0; });
+        // C26/C27/C28 drawn in didDrawCell so each line is in its own row band; leave empty for table
+        r['C26'] = '';
+        r['C27'] = '';
+        r['C28'] = '';
+        bodyLinesByRow.push({ c26: nameLines, c27: occLines, c28: edLines });
+        r['C29'] = yesNo(h.couple_practicing_family_planning);
+        r['C30'] = h.toilet_type || '';
+        r['C31'] = h.water_source || '';
+        r['C32'] = h.food_production_activity || '';
+        r['C33'] = yesNo(h.using_iodized_salt);
+        r['C34'] = yesNo(h.using_iron_fortified_rice);
 
-        body.push(r1);
-        body.push(r2);
-        body.push(r3);
+        body.push(r);
       });
+
+      const usedHouseholds = households.slice(0, body.length);
+
+      // Build multi-row header similar to the official form
+      const headRows: any[] = [];
+      headRows.push([
+        { content: 'HH\nNo.', rowSpan: 3 },
+        { content: 'No. of\nfamily\nliving in\nthe house', rowSpan: 3 },
+        { content: 'Number\nof HH\nmembers', rowSpan: 3 },
+        { content: 'NHTS Household\n1-NHTS 4Ps\n2-NHTS Non-4Ps\n3-Non-NHTS', rowSpan: 3 },
+        { content: 'Indigenous Group\n1-IP  2-Non-IP', rowSpan: 3 },
+        { content: 'Number of Family Members by Age Classification / Health Risk Group', colSpan: 20 },
+        { content: 'Name of Father (Fa) and\nMother (Mo); Caregiver\n(Ca)', rowSpan: 3 },
+        { content: 'Occupation', rowSpan: 3 },
+        { content: 'Educational\nAttainment', rowSpan: 3 },
+        { content: 'Couple Practicing\nFamily Planning', rowSpan: 3 },
+        // Grouped headers on the far right to match "Fill in:" and "Check if" bands
+        { content: 'Fill in:', colSpan: 3 },
+        { content: 'Check if', colSpan: 2 },
+      ]);
+      headRows.push([
+        { content: 'Newborn\n(0-28 days)', colSpan: 2 },
+        { content: 'Infant\n(29 days-11 months)', colSpan: 2 },
+        { content: 'Under-five\n(1-4 years old)', colSpan: 2 },
+        { content: 'Children\n5-9 y.o.', colSpan: 2 },
+        { content: 'Adolescence\n(10-19 y.o.)', colSpan: 2 },
+        { content: 'Pregnant' },
+        { content: 'Adolescent\nPregnant' },
+        { content: 'Post-Partum\n(PP)' },
+        { content: '15-49 y.o.\nnot pregnant & non PP' },
+        { content: 'Adult\n20-59 y.o.', colSpan: 2 },
+        { content: 'Senior\nCitizens', colSpan: 2 },
+        { content: 'Person With\nDisability', colSpan: 2 },
+        // Second-level headers for the grouped "Fill in:" and "Check if" columns,
+        // each spanning down over the sex row so they visually match the sample form.
+        { content: 'Toilet Type\n(1, 2, 3, 4)', rowSpan: 2 },
+        { content: 'Water Source\n(1, 2)', rowSpan: 2 },
+        { content: 'Food Production\nActivity (VG/FT/PL/FP/NA)', rowSpan: 2 },
+        { content: 'HH using\nIodized Salt', rowSpan: 2 },
+        { content: 'HH using Iron-Fortified Rice', rowSpan: 2 },
+      ]);
+      headRows.push([
+        'M','F','M','F','M','F','M','F','M','F','F','F','F','F','M','F','M','F','M','F',
+      ]);
+      // C-label row under the header (C1..C34)
+      headRows.push(Array.from({ length: 34 }, (_, i) => `C${i + 1}`));
+
+      // Track header bottom to draw an outer border
+      let headerBottomY = startY;
 
       autoTable(doc as any, {
-        head,
+        columns,
+        head: headRows as any,
         body,
-        startY: 70,
-        styles: { fontSize: 7 },
-        headStyles: { fillColor: [220,220,220] },
+        startY,
+        styles: { fontSize: 6.5, cellPadding: 1, halign: 'center', valign: 'middle', lineColor: [0,0,0], textColor: [0,0,0], lineWidth: 0.5 },
+        bodyStyles: { minCellHeight: minRowH },
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.7 },
         theme: 'grid',
-        columnStyles: {
-          // make columns narrow to fit
-          0: { cellWidth: 30 },
-        }
+        margin: { left: margin, right: margin },
+        columnStyles,
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const colIndex = data.column.index; // 0-based
+            const rowIndex = (data as any).row?.index ?? 0;
+            if (rowHeights[rowIndex] != null) {
+              data.cell.styles.minCellHeight = rowHeights[rowIndex];
+            }
+            // Data centered (default halign: 'center'); only C26/C27/C28 use custom drawing
+            if ([25,26,27].includes(colIndex)) {
+              data.cell.styles.valign = 'top';
+              data.cell.styles.fontSize = 5;
+            }
+          }
+        },
+        didDrawCell: (data: any) => {
+          if (data.section === 'head') {
+            const b = data.cell.y + data.cell.height;
+            if (b > headerBottomY) headerBottomY = b;
+          }
+          if (data.section === 'body') {
+            const colIndex = data.column.index; // 0-based
+            const rowIndex = (data as any).row?.index ?? 0;
+            const x = data.cell.x;
+            const y = data.cell.y;
+            const w = data.cell.width;
+            const h = data.cell.height;
+            const bands = bodyBandHeights[rowIndex] ?? [h / 3, h / 3, h / 3];
+            const bandTops = [0, bands[0], bands[0] + bands[1]].map((sum) => y + sum);
+            // Horizontal dividers between Fa / Mo / Ca bands (use stored band heights so names fit)
+            if ([25, 26, 27].includes(colIndex)) {
+              doc.setDrawColor(0);
+              doc.setLineWidth(0.5);
+              doc.line(x, bandTops[1], x + w, bandTops[1]);
+              doc.line(x, bandTops[2], x + w, bandTops[2]);
+            }
+            // Draw name / occupation / education in the correct band (row 1 = Fa, row 2 = Mo, row 3 = Ca)
+            if ([25, 26, 27].includes(colIndex) && bodyLinesByRow[rowIndex]) {
+              const key = colIndex === 25 ? 'c26' : colIndex === 26 ? 'c27' : 'c28';
+              const lines = bodyLinesByRow[rowIndex][key];
+              const padding = 2;
+              const maxW = w - padding * 2;
+              [0, 1, 2].forEach((i) => {
+                const line = lines[i] ?? '';
+                if (!line) return;
+                const bandTop = bandTops[i];
+                const bandHeight = bands[i];
+                const bandMid = bandTop + bandHeight / 2;
+                if (colIndex === 25) {
+                  // C26 names: top-aligned with inset so text isn't clipped at top of band
+                  doc.setFontSize(nameFontSize);
+                  doc.setTextColor(0, 0, 0);
+                  const baseline = bandTop + nameTopInset + nameFontSize;
+                  (doc as any).text(line, x + padding, baseline, { maxWidth: maxW, align: 'left' });
+                } else {
+                  // C27 occupation, C28 education: keep 5pt, vertically centered in band
+                  doc.setFontSize(5);
+                  doc.setTextColor(0, 0, 0);
+                  const baseline = bandMid + 2.5;
+                  (doc as any).text(line, x + padding, baseline, { maxWidth: maxW, align: 'left' });
+                }
+              });
+            }
+          }
+        },
       });
 
-      const fileName = `Nutrition_BNS_Form_${new Date().toISOString().split('T')[0]}.pdf`;
+      // Draw a black rectangle around the entire table header block
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.9);
+      doc.rect(margin, startY, contentWidth, Math.max(0, headerBottomY - startY));
+
+      // Unique timestamped filename to avoid caches
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const fileName = `Nutrition_BNS_Form_${stamp}.pdf`;
       doc.save(fileName);
-      setMessage({ type: 'success', text: `BNS Form PDF generated (${households.length} households).` });
+      setMessage({ type: 'success', text: `BNS Form PDF generated (${usedHouseholds.length} household${usedHouseholds.length === 1 ? '' : 's'}) on 1 page.` });
     } catch (err: any) {
       console.error('handleExportBnsPdf error:', err);
       setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'Error generating BNS PDF' });
