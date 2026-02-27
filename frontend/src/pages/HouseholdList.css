@@ -102,10 +102,10 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding: 24px;
+  padding: 24px 24px 48px;
 }
 
 .filter-modal {

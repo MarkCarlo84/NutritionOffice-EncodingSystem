@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import nutritionOfficeLogo from '../../Nutrition office Logo with border.png';
 import './Layout.css';
 
 const Layout = () => {
@@ -21,7 +22,7 @@ const Layout = () => {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="logo-placeholder"></div>
+          <img src={nutritionOfficeLogo} alt="Nutrition Office" className="sidebar-logo" />
           <h1 className="sidebar-title">Nutrition Office Encoder</h1>
         </div>
 

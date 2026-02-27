@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import bgImage from '../../bg1.png';
+import cabuyaoLogo from '../../Cabuyao_Logo.png';
+import nutritionOfficeLogo from '../../Nutrition_Office_logo.png';
 import './Login.css';
 
 const Login = () => {
@@ -31,6 +33,10 @@ const Login = () => {
     <div className="login-page" style={{ backgroundImage: `url(${bgImage})` }}>
       <div className="login-card">
         <div className="login-header">
+          <div className="login-logos">
+            <img src={cabuyaoLogo} alt="Lungsod ng Cabuyao" className="login-logo" />
+            <img src={nutritionOfficeLogo} alt="City Nutrition Office Cabuyao City" className="login-logo login-logo-nutrition" />
+          </div>
           <h1>Nutrition Office Encoder</h1>
           <p>Cabuyao Nutrition Office</p>
         </div>

@@ -114,8 +114,32 @@
   background-color: var(--color-primary-hover);
 }
 
-.export-card-summary .export-btn {
-  margin-top: 16px;
+/* Compact height for Family Profile Survey Summary - size to content, don't stretch */
+.export-card-summary {
+  align-self: start;
+  padding: 20px 24px;
+}
+
+.export-card-summary h2 {
+  margin-bottom: 8px;
+}
+
+.export-card-summary > p {
+  margin-bottom: 16px;
+}
+
+.export-card-summary .summary-filters-inline {
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.export-card-summary .export-actions {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.export-card-summary .export-actions .export-btn {
+  padding: 12px 20px;
 }
 
 .summary-filters-inline {
@@ -162,9 +186,42 @@
   flex: 1 1 220px;
 }
 
-/* BNS Form Card */
+/* BNS Form Card - compact height */
 .export-card-bns {
+  align-self: start;
   grid-column: span 1;
+  padding: 20px 24px;
+}
+
+.export-card-bns h2 {
+  margin-bottom: 8px;
+}
+
+.export-card-bns > p {
+  margin-bottom: 16px;
+}
+
+.export-card-bns .bns-form-filters {
+  padding: 12px;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.export-card-bns .bns-form-filters .filter-row {
+  gap: 6px;
+}
+
+.export-card-bns .bns-form-filters .filter-row input,
+.export-card-bns .bns-form-filters .filter-row select {
+  padding: 10px 12px;
+}
+
+.export-card-bns .export-btn {
+  padding: 12px 20px;
+}
+
+.export-card-bns .filter-hint {
+  margin-top: 8px;
 }
 
 /* BNS Form Filters */

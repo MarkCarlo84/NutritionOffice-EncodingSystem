@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/api';
 import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
+import { MONTH_OPTIONS, monthLabel } from '../utils/surveySummary';
 import DownwardSelect from '../components/DownwardSelect';
 import AbbreviationGuideModal from '../components/AbbreviationGuideModal';
 import './BarangaySummary.css';
@@ -167,17 +168,26 @@ function applyFilters(
     });
   }
   if (filters.surveyPeriodFrom || filters.surveyPeriodTo) {
+    const year = filters.surveyYear ? parseInt(filters.surveyYear, 10) : new Date().getFullYear();
+    const toFromTime = (monthVal: string, endOfMonth: boolean): number => {
+      const m = parseInt(monthVal, 10);
+      if (m >= 1 && m <= 12) {
+        if (endOfMonth) return new Date(year, m, 0, 23, 59, 59, 999).getTime();
+        return new Date(year, m - 1, 1, 0, 0, 0, 0).getTime();
+      }
+      return 0;
+    };
     list = list.filter((h: any) => {
       const d = h.updated_at || h.created_at;
       if (!d) return true;
       const t = new Date(d).getTime();
       if (filters.surveyPeriodFrom) {
-        const from = new Date(filters.surveyPeriodFrom + 'T00:00:00').getTime();
-        if (t < from) return false;
+        const from = toFromTime(filters.surveyPeriodFrom, false);
+        if (from && t < from) return false;
       }
       if (filters.surveyPeriodTo) {
-        const to = new Date(filters.surveyPeriodTo + 'T23:59:59').getTime();
-        if (t > to) return false;
+        const to = toFromTime(filters.surveyPeriodTo, true);
+        if (to && t > to) return false;
       }
       return true;
     });
@@ -206,8 +216,22 @@ const BarangaySummary = () => {
       ...f,
       barangay,
       barangayNutritionScholar: resolveBnsForBarangay(barangay, f.barangayNutritionScholar),
+      purokBlockStreet: '',
     }));
   };
+
+  const purokOptionsByBarangay = useMemo(() => {
+    const empty = { value: '', label: 'All' };
+    if (!filters.barangay) return [empty];
+    const distinct = Array.from(
+      new Set(
+        households
+          .filter((h: any) => (h.barangay || '') === filters.barangay && String(h.purok_sito || '').trim())
+          .map((h: any) => String(h.purok_sito || '').trim())
+      )
+    ).sort();
+    return [empty, ...distinct.map((p) => ({ value: p, label: p }))];
+  }, [households, filters.barangay]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -240,11 +264,11 @@ const BarangaySummary = () => {
     s.basic.barangay = filters.barangay ? (BARANGAY_DISPLAY[filters.barangay] || filters.barangay) : 'All Barangays';
     s.basic.purokBlockStreet = filters.purokBlockStreet || '—';
     if (filters.surveyPeriodFrom && filters.surveyPeriodTo) {
-      s.basic.surveyPeriod = `${filters.surveyPeriodFrom} - ${filters.surveyPeriodTo}`;
+      s.basic.surveyPeriod = `${monthLabel(filters.surveyPeriodFrom)} - ${monthLabel(filters.surveyPeriodTo)}`;
     } else if (filters.surveyPeriodFrom) {
-      s.basic.surveyPeriod = `From ${filters.surveyPeriodFrom}`;
+      s.basic.surveyPeriod = `From ${monthLabel(filters.surveyPeriodFrom)}`;
     } else if (filters.surveyPeriodTo) {
-      s.basic.surveyPeriod = `To ${filters.surveyPeriodTo}`;
+      s.basic.surveyPeriod = `To ${monthLabel(filters.surveyPeriodTo)}`;
     } else {
       s.basic.surveyPeriod = filters.surveyYear ? filters.surveyYear : '—';
     }
@@ -258,9 +282,6 @@ const BarangaySummary = () => {
   const occLabels = ['Manager', 'Professional', 'Technician & Associate Professional', 'Clerical Support Workers', 'Service & Sales Workers', 'Skilled Agri, Forestry & Fishery', 'Craft & Related Workers', 'Plant & Machine Operators', 'Elementary Occupations', 'Armed Forces', 'None'];
   const edLabels = ['None', 'Elementary Undergraduate', 'Elementary Graduate', 'HighSchool Undergraduate', 'HighSchool Graduate', 'College Undergraduate', 'College Graduate', 'Vocational', 'Post Graduate'];
 
-  const purokOptions = Array.from(
-    new Set(households.map((h: any) => String(h.purok_sito || '').trim()).filter(Boolean))
-  ).sort();
   const yearOptions = Array.from(
     new Set(
       households.flatMap((h: any) => {
@@ -328,15 +349,12 @@ const BarangaySummary = () => {
             </div>
             <div className="filter-field">
               <label>Purok / Block / Street</label>
-              <select
+              <DownwardSelect
                 value={filters.purokBlockStreet}
-                onChange={(e) => setFilters((f) => ({ ...f, purokBlockStreet: e.target.value }))}
-              >
-                <option value="">All</option>
-                {purokOptions.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+                options={purokOptionsByBarangay}
+                placeholder="All"
+                onChange={(v) => setFilters((f) => ({ ...f, purokBlockStreet: v }))}
+              />
             </div>
             <div className="filter-field">
               <label>Survey Year</label>
@@ -352,18 +370,20 @@ const BarangaySummary = () => {
             </div>
             <div className="filter-field">
               <label>Survey Period (From)</label>
-              <input
-                type="date"
+              <DownwardSelect
                 value={filters.surveyPeriodFrom}
-                onChange={(e) => setFilters((f) => ({ ...f, surveyPeriodFrom: e.target.value }))}
+                options={[{ value: '', label: '—' }, ...MONTH_OPTIONS]}
+                placeholder="—"
+                onChange={(v) => setFilters((f) => ({ ...f, surveyPeriodFrom: v }))}
               />
             </div>
             <div className="filter-field">
               <label>Survey Period (To)</label>
-              <input
-                type="date"
+              <DownwardSelect
                 value={filters.surveyPeriodTo}
-                onChange={(e) => setFilters((f) => ({ ...f, surveyPeriodTo: e.target.value }))}
+                options={[{ value: '', label: '—' }, ...MONTH_OPTIONS]}
+                placeholder="—"
+                onChange={(v) => setFilters((f) => ({ ...f, surveyPeriodTo: v }))}
               />
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
+import { MONTH_OPTIONS } from '../utils/surveySummary';
 import DownwardSelect from '../components/DownwardSelect';
 import './HouseholdList.css';
 
@@ -100,14 +101,29 @@ const HouseholdList = () => {
   };
 
   const buildParams = (pageNum: number, searchTerm: string, filterValues: FilterValues) => {
-    const params: Record<string, string | number> = { page: pageNum, per_page: 15 };
+    // Show 10 household records per page
+    const params: Record<string, string | number> = { page: pageNum, per_page: 10 };
     if (searchTerm.trim()) params.search = searchTerm.trim();
     if (filterValues.bns.trim()) params.bns = filterValues.bns.trim();
     if (filterValues.barangay && filterValues.barangay !== 'All Barangays') params.barangay = filterValues.barangay;
     if (filterValues.purok.trim()) params.purok_sito = filterValues.purok.trim();
     if (filterValues.surveyYear.trim()) params.survey_year = filterValues.surveyYear.trim();
-    if (filterValues.periodFrom.trim()) params.period_from = filterValues.periodFrom.trim();
-    if (filterValues.periodTo.trim()) params.period_to = filterValues.periodTo.trim();
+    const year = filterValues.surveyYear.trim() ? parseInt(filterValues.surveyYear, 10) : new Date().getFullYear();
+    if (filterValues.periodFrom.trim()) {
+      const m = filterValues.periodFrom.trim();
+      if (/^(0?[1-9]|1[0-2])$/.test(m)) {
+        const mm = m.length === 1 ? '0' + m : m;
+        params.period_from = `${year}-${mm}-01`;
+      }
+    }
+    if (filterValues.periodTo.trim()) {
+      const m = filterValues.periodTo.trim();
+      if (/^(0?[1-9]|1[0-2])$/.test(m)) {
+        const mm = m.length === 1 ? '0' + m : m;
+        const lastDay = new Date(year, parseInt(mm, 10), 0).getDate();
+        params.period_to = `${year}-${mm}-${String(lastDay).padStart(2, '0')}`;
+      }
+    }
     return params;
   };
 
@@ -275,22 +291,30 @@ const HouseholdList = () => {
                   />
                 </div>
                 <div className="filter-field">
-                  <label htmlFor="filter-period-from">Period From</label>
-                  <input
+                  <label htmlFor="filter-period-from">Survey Period (From)</label>
+                  <select
                     id="filter-period-from"
-                    type="date"
                     value={filter.periodFrom || ''}
                     onChange={(e) => setFilter((f) => ({ ...f, periodFrom: e.target.value }))}
-                  />
+                  >
+                    <option value="">—</option>
+                    {MONTH_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="filter-field">
-                  <label htmlFor="filter-period-to">Period To</label>
-                  <input
+                  <label htmlFor="filter-period-to">Survey Period (To)</label>
+                  <select
                     id="filter-period-to"
-                    type="date"
                     value={filter.periodTo || ''}
                     onChange={(e) => setFilter((f) => ({ ...f, periodTo: e.target.value }))}
-                  />
+                  >
+                    <option value="">—</option>
+                    {MONTH_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
