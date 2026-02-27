@@ -47,6 +47,25 @@
   margin-bottom: 32px;
 }
 
+.login-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.login-logo {
+  height: 80px;
+  width: 80px;
+  object-fit: contain;
+}
+
+.login-logo-nutrition {
+  height: 90px;
+  width: 90px;
+}
+
 .login-header h1 {
   font-size: 24px;
   font-weight: 600;

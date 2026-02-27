@@ -29,6 +29,19 @@ export const BARANGAY_DISPLAY: Record<string, string> = {
   'Poblacion Tres': 'Pob. Tres',
 };
 
+/** Month-only options for Survey Period (From/To). Value is "01"-"12". */
+export const MONTH_OPTIONS: { value: string; label: string }[] = [
+  { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
+  { value: '04', label: 'April' }, { value: '05', label: 'May' }, { value: '06', label: 'June' },
+  { value: '07', label: 'July' }, { value: '08', label: 'August' }, { value: '09', label: 'September' },
+  { value: '10', label: 'October' }, { value: '11', label: 'November' }, { value: '12', label: 'December' },
+];
+
+export function monthLabel(monthValue: string): string {
+  const m = MONTH_OPTIONS.find((o) => o.value === monthValue);
+  return m ? m.label : monthValue || '—';
+}
+
 export const OCC_MAP: Record<string, number> = {
   '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '10': 9, '11': 10,
 };
@@ -172,17 +185,26 @@ export function applyFilters(
     });
   }
   if (filters.surveyPeriodFrom || filters.surveyPeriodTo) {
+    const year = filters.surveyYear ? parseInt(filters.surveyYear, 10) : new Date().getFullYear();
+    const toFromTime = (monthVal: string, endOfMonth: boolean): number => {
+      const m = parseInt(monthVal, 10);
+      if (m >= 1 && m <= 12) {
+        if (endOfMonth) return new Date(year, m, 0, 23, 59, 59, 999).getTime();
+        return new Date(year, m - 1, 1, 0, 0, 0, 0).getTime();
+      }
+      return 0;
+    };
     list = list.filter((h: any) => {
       const d = h.updated_at || h.created_at;
       if (!d) return true;
       const t = new Date(d).getTime();
       if (filters.surveyPeriodFrom) {
-        const from = new Date(filters.surveyPeriodFrom + 'T00:00:00').getTime();
-        if (t < from) return false;
+        const from = toFromTime(filters.surveyPeriodFrom, false);
+        if (from && t < from) return false;
       }
       if (filters.surveyPeriodTo) {
-        const to = new Date(filters.surveyPeriodTo + 'T23:59:59').getTime();
-        if (t > to) return false;
+        const to = toFromTime(filters.surveyPeriodTo, true);
+        if (to && t > to) return false;
       }
       return true;
     });

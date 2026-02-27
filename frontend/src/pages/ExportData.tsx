@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/api';
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
@@ -8,6 +8,8 @@ import {
   applyFilters,
   BARANGAYS,
   BARANGAY_DISPLAY,
+  MONTH_OPTIONS,
+  monthLabel,
 } from '../utils/surveySummary';
 import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
 import DownwardSelect from '../components/DownwardSelect';
@@ -41,11 +43,55 @@ const ExportData = () => {
     purokSitio: '',
   });
 
+  // Households from system to build Purok options per barangay
+  const [householdsForFilters, setHouseholdsForFilters] = useState<{ barangay: string; purok_sito: string }[]>([]);
+
+  useEffect(() => {
+    const fetchHouseholds = async () => {
+      try {
+        const res = await api.get('/households', { params: { per_page: 10000 } });
+        const list = res.data?.data ?? res.data ?? [];
+        const arr = Array.isArray(list) ? list : [];
+        setHouseholdsForFilters(arr.map((h: any) => ({ barangay: h.barangay || '', purok_sito: String(h.purok_sito || '').trim() })));
+      } catch {
+        setHouseholdsForFilters([]);
+      }
+    };
+    fetchHouseholds();
+  }, []);
+
+  const summaryPurokOptions = useMemo(() => {
+    const empty = { value: '', label: 'All' };
+    if (!summaryFilters.barangay) return [empty];
+    const distinct = Array.from(
+      new Set(
+        householdsForFilters
+          .filter((h) => h.barangay === summaryFilters.barangay && h.purok_sito)
+          .map((h) => h.purok_sito)
+      )
+    ).sort();
+    return [empty, ...distinct.map((p) => ({ value: p, label: p }))];
+  }, [householdsForFilters, summaryFilters.barangay]);
+
+  const bnsPurokOptions = useMemo(() => {
+    const empty = { value: '', label: 'All' };
+    if (!bnsFormFilters.barangay) return [empty];
+    const distinct = Array.from(
+      new Set(
+        householdsForFilters
+          .filter((h) => h.barangay === bnsFormFilters.barangay && h.purok_sito)
+          .map((h) => h.purok_sito)
+      )
+    ).sort();
+    return [empty, ...distinct.map((p) => ({ value: p, label: p }))];
+  }, [householdsForFilters, bnsFormFilters.barangay]);
+
   const handleSummaryBarangayChange = (barangay: string) => {
     setSummaryFilters((f) => ({
       ...f,
       barangay,
       bns: resolveBnsForBarangay(barangay, f.bns),
+      purokBlockStreet: '',
     }));
   };
 
@@ -76,41 +122,45 @@ const ExportData = () => {
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageWidth = (doc.internal.pageSize as any).getWidth();
       const pageHeight = (doc.internal.pageSize as any).getHeight();
-
-      // ===== Header styled like sample image =====
       const margin = 16;
-      doc.setFontSize(8);
-      doc.text('BNS Form No. 1A', margin, 16);
-      doc.text('Philippine Plan of Action for Nutrition', margin, 28);
-      doc.setFontSize(12);
-      doc.text('HOUSEHOLD PROFILE', pageWidth / 2, 22, { align: 'center' });
-      doc.setFontSize(7);
-      doc.text(`Edited ${new Date().toLocaleDateString()}`, pageWidth - margin, 16, { align: 'right' });
+      const startY = 78;
+      const drawBnsHeader = () => {
+        // ===== Header styled like sample image =====
+        doc.setFontSize(8);
+        doc.text('BNS Form No. 1A', margin, 16);
+        doc.text('Philippine Plan of Action for Nutrition', margin, 28);
+        doc.setFontSize(12);
+        doc.text('HOUSEHOLD PROFILE', pageWidth / 2, 22, { align: 'center' });
+        doc.setFontSize(7);
+        doc.text(`Edited ${new Date().toLocaleDateString()}`, pageWidth - margin, 16, { align: 'right' });
 
-      const barangayLabel = bnsFormFilters.barangay ? (BARANGAY_DISPLAY[bnsFormFilters.barangay] || bnsFormFilters.barangay) : '';
-      // Lines Purok/Sitio, Barangay, Municipality/City, Province
-      const lineY1 = 44;
-      const lineY2 = 60;
-      doc.setFontSize(9);
-      // Row 1 labels
-      doc.text('Purok/Sitio:', margin, lineY1);
-      doc.text('Municipality/City:', pageWidth / 2 + 16, lineY1);
-      // Row 2 labels
-      doc.text('Barangay:', margin, lineY2);
-      doc.text('Province:', pageWidth / 2 + 16, lineY2);
-      // Underlines
-      const drawUnderline = (x1: number, y: number, x2: number, text?: string) => {
-        doc.setLineWidth(0.5);
-        doc.line(x1, y + 2, x2, y + 2);
-        if (text) {
-          doc.setFontSize(9);
-          doc.text(text, x1 + 2, y);
-        }
+        const barangayLabel = bnsFormFilters.barangay
+          ? (BARANGAY_DISPLAY[bnsFormFilters.barangay] || bnsFormFilters.barangay)
+          : '';
+        // Lines Purok/Sitio, Barangay, Municipality/City, Province
+        const lineY1 = 44;
+        const lineY2 = 60;
+        doc.setFontSize(9);
+        // Row 1 labels
+        doc.text('Purok/Sitio:', margin, lineY1);
+        doc.text('Municipality/City:', pageWidth / 2 + 16, lineY1);
+        // Row 2 labels
+        doc.text('Barangay:', margin, lineY2);
+        doc.text('Province:', pageWidth / 2 + 16, lineY2);
+        // Underlines
+        const drawUnderline = (x1: number, y: number, x2: number, text?: string) => {
+          doc.setLineWidth(0.5);
+          doc.line(x1, y + 2, x2, y + 2);
+          if (text) {
+            doc.setFontSize(9);
+            doc.text(text, x1 + 2, y);
+          }
+        };
+        drawUnderline(margin + 70, lineY1, pageWidth / 2 - 20, bnsFormFilters.purokSitio || '');
+        drawUnderline(pageWidth / 2 + 120, lineY1, pageWidth - margin, 'Cabuyao');
+        drawUnderline(margin + 56, lineY2, pageWidth / 2 - 20, barangayLabel);
+        drawUnderline(pageWidth / 2 + 80, lineY2, pageWidth - margin, 'Laguna');
       };
-      drawUnderline(margin + 70, lineY1, pageWidth / 2 - 20, bnsFormFilters.purokSitio || '');
-      drawUnderline(pageWidth / 2 + 120, lineY1, pageWidth - margin, 'Cabuyao');
-      drawUnderline(margin + 56, lineY2, pageWidth / 2 - 20, barangayLabel);
-      drawUnderline(pageWidth / 2 + 80, lineY2, pageWidth - margin, 'Laguna');
 
       // ===== Table layout similar to form header rows =====
       const contentWidth = pageWidth - margin * 2;
@@ -140,9 +190,7 @@ const ExportData = () => {
       const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
 
       // Build body: one row per household; row height varies so names fit (Fa/Mo/Ca in separate bands)
-      const startY = 78;
-      const availableH = pageHeight - startY - 16;
-      const minRowH = 42; // height for 3 bands so names fit and stay readable
+      const minRowH = 42; // original height so Fa/Mo/Ca names fit comfortably
       const nameFontSize = 4.5; // names: bigger so Father/Mother/Caregiver are readable
       const lineHeightPt = 6.5; // line height for name wrapping at larger font
       const wC26 = colWidths[25]; // C26 column width in pt
@@ -162,69 +210,10 @@ const ExportData = () => {
         const v = stripRolePrefix(name);
         return v ? `${tag} ${v}` : tag;
       };
-      const linesNeeded = (text: string, charsPerLine: number) => Math.max(1, Math.ceil((text || '').length / charsPerLine));
+      const linesNeeded = (text: string, charsPerLine: number) =>
+        Math.max(1, Math.ceil((text || '').length / charsPerLine));
 
-      const body: any[] = [];
-      const bodyLinesByRow: { c26: string[]; c27: string[]; c28: string[] }[] = [];
-      const rowHeights: number[] = [];
-      const bodyBandHeights: number[][] = []; // [band0, band1, band2] per row so names fit
-      let usedHeight = 0;
-
-      households.forEach((h: any) => {
-        const father = h.members?.find((m: any) => m.role === 'father');
-        const mother = h.members?.find((m: any) => m.role === 'mother');
-        const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
-
-        const nameLines: string[] = [
-          faMoCaLine('(Fa)', father?.name),
-          faMoCaLine('(Mo)', mother?.name),
-          faMoCaLine('(Ca)', caregiver?.name),
-        ];
-        const occLines: string[] = [
-          father?.occupation != null && father?.occupation !== '' ? String(father.occupation) : '',
-          mother?.occupation != null && mother?.occupation !== '' ? String(mother.occupation) : '',
-          caregiver?.occupation != null && caregiver?.occupation !== '' ? String(caregiver.occupation) : '',
-        ];
-        const edLines: string[] = [
-          father?.educational_attainment != null && father?.educational_attainment !== '' ? String(father.educational_attainment) : '',
-          mother?.educational_attainment != null && mother?.educational_attainment !== '' ? String(mother.educational_attainment) : '',
-          caregiver?.educational_attainment != null && caregiver?.educational_attainment !== '' ? String(caregiver.educational_attainment) : '',
-        ];
-
-        // Per-band height: each of the 3 rows (Fa, Mo, Ca) must fit name (may wrap)
-        const bandHeights = [0, 1, 2].map((i) => {
-          const nLines = linesNeeded(nameLines[i], charsPerLineC26);
-          return Math.max(14, nLines * lineHeightPt + 2); // min 14pt per band so readable names fit
-        });
-        const rowH = Math.max(minRowH, bandHeights[0] + bandHeights[1] + bandHeights[2]);
-        if (usedHeight + rowH > availableH && body.length > 0) return; // no more room
-        usedHeight += rowH;
-        rowHeights.push(rowH);
-        bodyBandHeights.push(bandHeights);
-
-        const r: Record<string, any> = {};
-        r['C1'] = h.household_number || '';
-        r['C2'] = h.family_living_in_house ?? '';
-        r['C3'] = h.number_of_members ?? '';
-        r['C4'] = h.nhts_household_group || '';
-        r['C5'] = h.indigenous_group || '';
-        ageFields.forEach((f, idx) => { r[`C${6 + idx}`] = (h as any)[f] ?? 0; });
-        // C26/C27/C28 drawn in didDrawCell so each line is in its own row band; leave empty for table
-        r['C26'] = '';
-        r['C27'] = '';
-        r['C28'] = '';
-        bodyLinesByRow.push({ c26: nameLines, c27: occLines, c28: edLines });
-        r['C29'] = yesNo(h.couple_practicing_family_planning);
-        r['C30'] = h.toilet_type || '';
-        r['C31'] = h.water_source || '';
-        r['C32'] = h.food_production_activity || '';
-        r['C33'] = yesNo(h.using_iodized_salt);
-        r['C34'] = yesNo(h.using_iron_fortified_rice);
-
-        body.push(r);
-      });
-
-      const usedHouseholds = households.slice(0, body.length);
+      const maxHouseholdsPerPage = 8;
 
       // Build multi-row header similar to the official form
       const headRows: any[] = [];
@@ -270,97 +259,390 @@ const ExportData = () => {
       // C-label row under the header (C1..C34)
       headRows.push(Array.from({ length: 34 }, (_, i) => `C${i + 1}`));
 
-      // Track header bottom to draw an outer border
-      let headerBottomY = startY;
+      // Available vertical space for table rows under the header
+      const availableH = pageHeight - startY - 16;
 
-      autoTable(doc as any, {
-        columns,
-        head: headRows as any,
-        body,
-        startY,
-        styles: { fontSize: 6.5, cellPadding: 1, halign: 'center', valign: 'middle', lineColor: [0,0,0], textColor: [0,0,0], lineWidth: 0.5 },
-        bodyStyles: { minCellHeight: minRowH },
-        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.7 },
-        theme: 'grid',
-        margin: { left: margin, right: margin },
-        columnStyles,
-        didParseCell: (data: any) => {
-          if (data.section === 'body') {
-            const colIndex = data.column.index; // 0-based
-            const rowIndex = (data as any).row?.index ?? 0;
-            if (rowHeights[rowIndex] != null) {
-              data.cell.styles.minCellHeight = rowHeights[rowIndex];
-            }
-            // Data centered (default halign: 'center'); only C26/C27/C28 use custom drawing
-            if ([25,26,27].includes(colIndex)) {
-              data.cell.styles.valign = 'top';
-              data.cell.styles.fontSize = 5;
-            }
-          }
-        },
-        didDrawCell: (data: any) => {
-          if (data.section === 'head') {
-            const b = data.cell.y + data.cell.height;
-            if (b > headerBottomY) headerBottomY = b;
-          }
-          if (data.section === 'body') {
-            const colIndex = data.column.index; // 0-based
-            const rowIndex = (data as any).row?.index ?? 0;
-            const x = data.cell.x;
-            const y = data.cell.y;
-            const w = data.cell.width;
-            const h = data.cell.height;
-            const bands = bodyBandHeights[rowIndex] ?? [h / 3, h / 3, h / 3];
-            const bandTops = [0, bands[0], bands[0] + bands[1]].map((sum) => y + sum);
-            // Horizontal dividers between Fa / Mo / Ca bands (use stored band heights so names fit)
-            if ([25, 26, 27].includes(colIndex)) {
-              doc.setDrawColor(0);
-              doc.setLineWidth(0.5);
-              doc.line(x, bandTops[1], x + w, bandTops[1]);
-              doc.line(x, bandTops[2], x + w, bandTops[2]);
-            }
-            // Draw name / occupation / education in the correct band (row 1 = Fa, row 2 = Mo, row 3 = Ca)
-            if ([25, 26, 27].includes(colIndex) && bodyLinesByRow[rowIndex]) {
-              const key = colIndex === 25 ? 'c26' : colIndex === 26 ? 'c27' : 'c28';
-              const lines = bodyLinesByRow[rowIndex][key];
-              const padding = 2;
-              const maxW = w - padding * 2;
-              [0, 1, 2].forEach((i) => {
-                const line = lines[i] ?? '';
-                if (!line) return;
-                const bandTop = bandTops[i];
-                const bandHeight = bands[i];
-                const bandMid = bandTop + bandHeight / 2;
-                if (colIndex === 25) {
-                  // C26 names: top-aligned with inset so text isn't clipped at top of band
-                  doc.setFontSize(nameFontSize);
-                  doc.setTextColor(0, 0, 0);
-                  const baseline = bandTop + nameTopInset + nameFontSize;
-                  (doc as any).text(line, x + padding, baseline, { maxWidth: maxW, align: 'left' });
-                } else {
-                  // C27 occupation, C28 education: keep 5pt, vertically centered in band
-                  doc.setFontSize(5);
-                  doc.setTextColor(0, 0, 0);
-                  const baseline = bandMid + 2.5;
-                  (doc as any).text(line, x + padding, baseline, { maxWidth: maxW, align: 'left' });
-                }
-              });
-            }
-          }
-        },
-      });
+      let globalIndex = 0;
+      let pageIndex = 0;
 
-      // Draw a black rectangle around the entire table header block
-      doc.setDrawColor(0);
-      doc.setLineWidth(0.9);
-      doc.rect(margin, startY, contentWidth, Math.max(0, headerBottomY - startY));
+      while (globalIndex < households.length) {
+        if (pageIndex > 0) doc.addPage();
+        drawBnsHeader();
+
+        const body: any[] = [];
+        const bodyLinesByRow: { c26: string[]; c27: string[]; c28: string[] }[] = [];
+        const rowHeights: number[] = [];
+        const bodyBandHeights: number[][] = [];
+        let usedHeight = 0;
+        let rowsOnPage = 0;
+
+        while (globalIndex < households.length && rowsOnPage < maxHouseholdsPerPage) {
+          const h: any = households[globalIndex];
+          const father = h.members?.find((m: any) => m.role === 'father');
+          const mother = h.members?.find((m: any) => m.role === 'mother');
+          const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
+
+          const nameLines: string[] = [
+            faMoCaLine('(Fa)', father?.name),
+            faMoCaLine('(Mo)', mother?.name),
+            faMoCaLine('(Ca)', caregiver?.name),
+          ];
+          const occLines: string[] = [
+            father?.occupation != null && father?.occupation !== '' ? String(father.occupation) : '',
+            mother?.occupation != null && mother?.occupation !== '' ? String(mother.occupation) : '',
+            caregiver?.occupation != null && caregiver?.occupation !== '' ? String(caregiver.occupation) : '',
+          ];
+          const edLines: string[] = [
+            father?.educational_attainment != null && father?.educational_attainment !== '' ? String(father.educational_attainment) : '',
+            mother?.educational_attainment != null && mother?.educational_attainment !== '' ? String(mother.educational_attainment) : '',
+            caregiver?.educational_attainment != null && caregiver?.educational_attainment !== '' ? String(caregiver.educational_attainment) : '',
+          ];
+
+          // Per-band height: each of the 3 rows (Fa, Mo, Ca) must fit name (may wrap)
+          const bandHeights = [0, 1, 2].map((i) => {
+            const nLines = linesNeeded(nameLines[i], charsPerLineC26);
+            return Math.max(14, nLines * lineHeightPt + 2); // original 14pt minimum per band
+          });
+          const rowH = Math.max(minRowH, bandHeights[0] + bandHeights[1] + bandHeights[2]);
+
+          if (rowsOnPage > 0 && usedHeight + rowH > availableH) break;
+
+          usedHeight += rowH;
+          rowHeights.push(rowH);
+          bodyBandHeights.push(bandHeights);
+
+          const r: Record<string, any> = {};
+          r['C1'] = globalIndex + 1; // Sequential HH No. across pages
+          r['C2'] = h.family_living_in_house ?? '';
+          r['C3'] = h.number_of_members ?? '';
+          r['C4'] = h.nhts_household_group || '';
+          r['C5'] = h.indigenous_group || '';
+          ageFields.forEach((f, idx) => {
+            r[`C${6 + idx}`] = (h as any)[f] ?? 0;
+          });
+          // C26/C27/C28 drawn in didDrawCell so each line is in its own row band; leave empty for table
+          r['C26'] = '';
+          r['C27'] = '';
+          r['C28'] = '';
+          bodyLinesByRow.push({ c26: nameLines, c27: occLines, c28: edLines });
+          r['C29'] = yesNo(h.couple_practicing_family_planning);
+          r['C30'] = h.toilet_type || '';
+          r['C31'] = h.water_source || '';
+          r['C32'] = h.food_production_activity || '';
+          r['C33'] = yesNo(h.using_iodized_salt);
+          r['C34'] = yesNo(h.using_iron_fortified_rice);
+
+          body.push(r);
+          globalIndex += 1;
+          rowsOnPage += 1;
+        }
+
+        // Track header bottom to draw an outer border
+        let headerBottomY = startY;
+
+        autoTable(doc as any, {
+          columns,
+          head: headRows as any,
+          body,
+          startY,
+          styles: {
+            fontSize: 6.5,
+            cellPadding: 1,
+            halign: 'center',
+            valign: 'middle',
+            lineColor: [0, 0, 0],
+            textColor: [0, 0, 0],
+            lineWidth: 0.5,
+          },
+          bodyStyles: { minCellHeight: minRowH },
+          headStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold',
+            lineColor: [0, 0, 0],
+            lineWidth: 0.7,
+          },
+          theme: 'grid',
+          margin: { left: margin, right: margin },
+          columnStyles,
+          didParseCell: (data: any) => {
+            if (data.section === 'body') {
+              const colIndex = data.column.index; // 0-based
+              const rowIndex = (data as any).row?.index ?? 0;
+              if (rowHeights[rowIndex] != null) {
+                data.cell.styles.minCellHeight = rowHeights[rowIndex];
+              }
+              // Data centered (default halign: 'center'); only C26/C27/C28 use custom drawing
+              if ([25,26,27].includes(colIndex)) {
+                data.cell.styles.valign = 'top';
+                data.cell.styles.fontSize = 5;
+              }
+            }
+          },
+          didDrawCell: (data: any) => {
+            if (data.section === 'head') {
+              const b = data.cell.y + data.cell.height;
+              if (b > headerBottomY) headerBottomY = b;
+            }
+            if (data.section === 'body') {
+              const colIndex = data.column.index; // 0-based
+              const rowIndex = (data as any).row?.index ?? 0;
+              const x = data.cell.x;
+              const y = data.cell.y;
+              const w = data.cell.width;
+              const h = data.cell.height;
+              const bands = bodyBandHeights[rowIndex] ?? [h / 3, h / 3, h / 3];
+              const bandTops = [0, bands[0], bands[0] + bands[1]].map((sum) => y + sum);
+              // Horizontal dividers between Fa / Mo / Ca bands (use stored band heights so names fit)
+              if ([25, 26, 27].includes(colIndex)) {
+                doc.setDrawColor(0);
+                doc.setLineWidth(0.5);
+                doc.line(x, bandTops[1], x + w, bandTops[1]);
+                doc.line(x, bandTops[2], x + w, bandTops[2]);
+              }
+              // Draw name / occupation / education in the correct band (row 1 = Fa, row 2 = Mo, row 3 = Ca)
+              if ([25, 26, 27].includes(colIndex) && bodyLinesByRow[rowIndex]) {
+                const key = colIndex === 25 ? 'c26' : colIndex === 26 ? 'c27' : 'c28';
+                const lines = bodyLinesByRow[rowIndex][key];
+                const padding = 2;
+                const maxW = w - padding * 2;
+                [0, 1, 2].forEach((i) => {
+                  const line = lines[i] ?? '';
+                  if (!line) return;
+                  const bandTop = bandTops[i];
+                  const bandHeight = bands[i];
+                  const bandMid = bandTop + bandHeight / 2;
+                  if (colIndex === 25) {
+                    // C26 names: top-aligned with inset so text isn't clipped at top of band
+                    doc.setFontSize(nameFontSize);
+                    doc.setTextColor(0, 0, 0);
+                    const baseline = bandTop + nameTopInset + nameFontSize;
+                    (doc as any).text(line, x + padding, baseline, { maxWidth: maxW, align: 'left' });
+                  } else {
+                    // C27 occupation, C28 education: center horizontally in the band
+                    doc.setFontSize(5);
+                    doc.setTextColor(0, 0, 0);
+                    const baseline = bandMid + 2.5;
+                    const centerX = x + w / 2;
+                    (doc as any).text(line, centerX, baseline, {
+                      maxWidth: maxW,
+                      align: 'center',
+                    });
+                  }
+                });
+              }
+            }
+          },
+        });
+
+        // Draw a black rectangle around the entire table header block
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.9);
+        doc.rect(margin, startY, contentWidth, Math.max(0, headerBottomY - startY));
+
+        // ===== Legend footer under the last household row on every page =====
+        const tableBottomY = ((doc as any).lastAutoTable?.finalY as number) || (startY + usedHeight);
+        const footerHeight = 58;
+        const footerTop = Math.min(pageHeight - footerHeight - 6, tableBottomY + 8);
+        const footerCols = [
+          {
+            title: 'Abbreviations',
+            lines: [
+              'HH – household',
+              'No – number',
+              'NHTS – National Household Targeting System',
+              '4Ps – Pantawid Pamilyang Pilipino Program',
+              'IP – indigenous people',
+              'y.o. – year old',
+              'PP – post partum',
+              'M – male   F – female',
+              'Fa – father   Mo – mother',
+            ],
+          },
+          {
+            title: 'Occupation',
+            lines: [
+              '1 – Manager',
+              '2 – Professional',
+              '3 – Technician & Associate Professionals',
+              '4 – Clerical Support Workers',
+              '5 – Service & Sales Worker',
+              '6 – Skilled agricultural, forestry & fishery workers',
+              '7 – Craft & related trade workers',
+              '8 – Plant & machine operators & assemblers',
+              '9 – Elementary occupations',
+              '10 – Armed Forces Occupations',
+              '11 – None',
+            ],
+          },
+          {
+            title: 'Educational Attainment',
+            lines: [
+              'N – None',
+              'EU – Elementary undergraduate',
+              'EG – Elementary graduate',
+              'HU – High school undergraduate',
+              'HG – High school graduate',
+              'CU – College undergraduate',
+              'CG – College graduate',
+              'V – Vocational',
+              'PG – Post graduate studies',
+            ],
+          },
+          {
+            title: 'Toilet',
+            lines: [
+              '1 – Improved sanitation',
+              '2 – Shared facility',
+              '3 – Unimproved',
+              '4 – Open defecation',
+            ],
+          },
+          {
+            title: 'Water Source',
+            lines: [
+              '1 – Improved source',
+              '2 – Unimproved source',
+            ],
+          },
+          {
+            title: 'Food Production',
+            lines: [
+              'VG – Vegetable garden',
+              'FT – Fruit',
+              'PL – Poultry/Livestock',
+              'FP – Fish pond',
+              'NA – None',
+            ],
+          },
+        ];
+
+        const footerColWidth = contentWidth / footerCols.length;
+        doc.setLineWidth(0.5);
+        // Legend font set to 4.5pt per your request
+        doc.setFontSize(4.5);
+        footerCols.forEach((col, idx) => {
+          const x = margin + idx * footerColWidth;
+          const midX = x + footerColWidth / 2;
+          const rowH = 4.8; // line spacing tuned for 4.5pt font
+
+          // Column box
+          doc.rect(x, footerTop, footerColWidth, footerHeight);
+
+          // Title
+          doc.setFont('helvetica', 'bold');
+          doc.text(col.title, x + 2, footerTop + 7, { align: 'left' });
+
+          // Lines (two-column layout for some legends)
+          doc.setFont('helvetica', 'normal');
+          const textYStart = footerTop + 13;
+
+          if (col.title === 'Abbreviations') {
+            const leftCol = [
+              'HH – household',
+              'No – number',
+              'NHTS – National Household Targeting System',
+              '4Ps – Pantawid Pamilyang Pilipino Program',
+              'IP – indigenous people',
+              'y.o. – year old',
+            ];
+            const rightCol = [
+              'M – male',
+              'F – female',
+              'Fa – father',
+              'Mo – mother',
+              '',
+              'PP – post partum',
+            ];
+            let y = textYStart;
+            leftCol.forEach((txt, i) => {
+              let maxLines = 1;
+              if (txt) {
+                const wrappedLeft = (doc as any).splitTextToSize(txt, footerColWidth / 2 - 4);
+                wrappedLeft.forEach((wl: string, li: number) => {
+                  doc.text(wl, x + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedLeft.length);
+              }
+              const rightTxt = rightCol[i];
+              if (rightTxt) {
+                const wrappedRight = (doc as any).splitTextToSize(rightTxt, footerColWidth / 2 - 4);
+                wrappedRight.forEach((wr: string, li: number) => {
+                  doc.text(wr, midX + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedRight.length);
+              }
+              y += maxLines * rowH;
+            });
+          } else if (col.title === 'Occupation') {
+            const leftCol = col.lines.slice(0, 5);
+            const rightCol = col.lines.slice(5);
+            const maxRows = Math.max(leftCol.length, rightCol.length);
+            let y = textYStart;
+            for (let i = 0; i < maxRows; i++) {
+              const l = leftCol[i];
+              const r = rightCol[i];
+              let maxLines = 1;
+              if (l) {
+                const wrappedLeft = (doc as any).splitTextToSize(l, footerColWidth / 2 - 4);
+                wrappedLeft.forEach((wl: string, li: number) => {
+                  doc.text(wl, x + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedLeft.length);
+              }
+              if (r) {
+                const wrappedRight = (doc as any).splitTextToSize(r, footerColWidth / 2 - 4);
+                wrappedRight.forEach((wr: string, li: number) => {
+                  doc.text(wr, midX + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedRight.length);
+              }
+              y += maxLines * rowH;
+            }
+          } else if (col.title === 'Educational Attainment') {
+            const leftCol = col.lines.slice(0, 5);
+            const rightCol = col.lines.slice(5);
+            const maxRows = Math.max(leftCol.length, rightCol.length);
+            let y = textYStart;
+            for (let i = 0; i < maxRows; i++) {
+              const l = leftCol[i];
+              const r = rightCol[i];
+              let maxLines = 1;
+              if (l) {
+                const wrappedLeft = (doc as any).splitTextToSize(l, footerColWidth / 2 - 4);
+                wrappedLeft.forEach((wl: string, li: number) => {
+                  doc.text(wl, x + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedLeft.length);
+              }
+              if (r) {
+                const wrappedRight = (doc as any).splitTextToSize(r, footerColWidth / 2 - 4);
+                wrappedRight.forEach((wr: string, li: number) => {
+                  doc.text(wr, midX + 2, y + li * rowH, { align: 'left' });
+                });
+                maxLines = Math.max(maxLines, wrappedRight.length);
+              }
+              y += maxLines * rowH;
+            }
+          } else {
+            // Single-column legends (Toilet, Water Source, Food Production)
+            (doc as any).text(col.lines.join('\n'), x + 2, textYStart, {
+              maxWidth: footerColWidth - 4,
+              align: 'left',
+            });
+          }
+        });
+
+        pageIndex += 1;
+      }
 
       // Unique timestamped filename to avoid caches
       const now = new Date();
       const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
       const fileName = `Nutrition_BNS_Form_${stamp}.pdf`;
       doc.save(fileName);
-      setMessage({ type: 'success', text: `BNS Form PDF generated (${usedHouseholds.length} household${usedHouseholds.length === 1 ? '' : 's'}) on 1 page.` });
+      const pageCount = Math.max(1, pageIndex);
+      setMessage({ type: 'success', text: `BNS Form PDF generated (${households.length} household${households.length === 1 ? '' : 's'}) on ${pageCount} page${pageCount === 1 ? '' : 's'} (8 households max per page).` });
     } catch (err: any) {
       console.error('handleExportBnsPdf error:', err);
       setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'Error generating BNS PDF' });
@@ -390,11 +672,11 @@ const ExportData = () => {
       s.basic.barangay = summaryFilters.barangay ? (BARANGAY_DISPLAY[summaryFilters.barangay] || summaryFilters.barangay) : 'All Barangays';
       s.basic.purokBlockStreet = summaryFilters.purokBlockStreet || '—';
       if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `${summaryFilters.surveyPeriodFrom} - ${summaryFilters.surveyPeriodTo}`;
+        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)}`;
       } else if (summaryFilters.surveyPeriodFrom) {
-        s.basic.surveyPeriod = `From ${summaryFilters.surveyPeriodFrom}`;
+        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)}`;
       } else if (summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `To ${summaryFilters.surveyPeriodTo}`;
+        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)}`;
       } else {
         s.basic.surveyPeriod = summaryFilters.surveyYear ? summaryFilters.surveyYear : '—';
       }
@@ -567,11 +849,11 @@ const ExportData = () => {
       s.basic.barangay = summaryFilters.barangay ? (BARANGAY_DISPLAY[summaryFilters.barangay] || summaryFilters.barangay) : 'All Barangays';
       s.basic.purokBlockStreet = summaryFilters.purokBlockStreet || '—';
       if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `${summaryFilters.surveyPeriodFrom} - ${summaryFilters.surveyPeriodTo}`;
+        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)}`;
       } else if (summaryFilters.surveyPeriodFrom) {
-        s.basic.surveyPeriod = `From ${summaryFilters.surveyPeriodFrom}`;
+        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)}`;
       } else if (summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `To ${summaryFilters.surveyPeriodTo}`;
+        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)}`;
       } else {
         s.basic.surveyPeriod = summaryFilters.surveyYear ? summaryFilters.surveyYear : '—';
       }
@@ -846,19 +1128,34 @@ const ExportData = () => {
             </div>
             <div className="filter-row">
               <label>Purok / Block / Street</label>
-              <input type="text" value={summaryFilters.purokBlockStreet} onChange={(e) => setSummaryFilters((f) => ({ ...f, purokBlockStreet: e.target.value }))} placeholder="Optional" />
+              <DownwardSelect
+                value={summaryFilters.purokBlockStreet}
+                options={summaryPurokOptions}
+                placeholder="All"
+                onChange={(v) => setSummaryFilters((f) => ({ ...f, purokBlockStreet: v }))}
+              />
             </div>
             <div className="filter-row">
               <label>Survey Year</label>
               <input type="text" value={summaryFilters.surveyYear} onChange={(e) => setSummaryFilters((f) => ({ ...f, surveyYear: e.target.value }))} placeholder="e.g. 2026" />
             </div>
             <div className="filter-row">
-              <label>Period From</label>
-              <input type="date" value={summaryFilters.surveyPeriodFrom} onChange={(e) => setSummaryFilters((f) => ({ ...f, surveyPeriodFrom: e.target.value }))} />
+              <label>Survey Period (From)</label>
+              <DownwardSelect
+                value={summaryFilters.surveyPeriodFrom}
+                options={[{ value: '', label: '—' }, ...MONTH_OPTIONS]}
+                placeholder="—"
+                onChange={(v) => setSummaryFilters((f) => ({ ...f, surveyPeriodFrom: v }))}
+              />
             </div>
             <div className="filter-row">
-              <label>Period To</label>
-              <input type="date" value={summaryFilters.surveyPeriodTo} onChange={(e) => setSummaryFilters((f) => ({ ...f, surveyPeriodTo: e.target.value }))} />
+              <label>Survey Period (To)</label>
+              <DownwardSelect
+                value={summaryFilters.surveyPeriodTo}
+                options={[{ value: '', label: '—' }, ...MONTH_OPTIONS]}
+                placeholder="—"
+                onChange={(v) => setSummaryFilters((f) => ({ ...f, surveyPeriodTo: v }))}
+              />
             </div>
           </div>
           <div className="export-actions">
@@ -890,12 +1187,11 @@ const ExportData = () => {
             </div>
             <div className="filter-row">
               <label>Purok / Sitio</label>
-              <input 
-                type="text" 
-                value={bnsFormFilters.purokSitio} 
-                onChange={(e) => setBnsFormFilters((f) => ({ ...f, purokSitio: e.target.value }))}
-                placeholder="Enter Purok/Sitio (optional)"
-                disabled={!bnsFormFilters.barangay}
+              <DownwardSelect
+                value={bnsFormFilters.purokSitio}
+                options={bnsPurokOptions}
+                placeholder="All"
+                onChange={(v) => setBnsFormFilters((f) => ({ ...f, purokSitio: v }))}
               />
             </div>
           </div>
