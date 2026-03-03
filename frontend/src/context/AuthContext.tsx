@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { API_BASE_URL } from '../config/api';
 import axios from 'axios';
 
@@ -23,11 +23,11 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setTokenState] = useState<string | null>(() => sessionStorage.getItem(TOKEN_KEY));
   const [loading, setLoading] = useState(true);
 
   const setAuthFromToken = useCallback(async (t: string) => {
-    localStorage.setItem(TOKEN_KEY, t);
+    sessionStorage.setItem(TOKEN_KEY, t);
     setTokenState(t);
     try {
       const { data } = await axios.get(`${API_BASE_URL}/api/user`, {
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setUser(data);
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
       setTokenState(null);
       setUser(null);
     }
@@ -47,11 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setAuthFromToken]);
 
   const logout = useCallback(() => {
-    const t = localStorage.getItem(TOKEN_KEY);
+    const t = sessionStorage.getItem(TOKEN_KEY);
     if (t) {
-      axios.post(`${API_BASE_URL}/api/logout`, {}, { headers: { Authorization: `Bearer ${t}` } }).catch(() => {});
+      axios.post(`${API_BASE_URL}/api/logout`, {}, { headers: { Authorization: `Bearer ${t}` } }).catch(() => { });
     }
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     setTokenState(null);
     setUser(null);
   }, []);
@@ -79,5 +79,5 @@ export function useAuth() {
 }
 
 export function getStoredToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }

@@ -1,11 +1,26 @@
 import { useState } from 'react';
-import axios from 'axios';
 import ExcelJS from 'exceljs';
 import api from '../lib/api';
 import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
 import { BARANGAYS, BARANGAY_DISPLAY } from '../utils/surveySummary';
 import DownwardSelect from '../components/DownwardSelect';
 import './ImportData.css';
+
+interface FieldDiff {
+  field: string;
+  label: string;
+  oldValue: any;
+  newValue: any;
+}
+
+interface ChangedHousehold {
+  index: number;
+  existingId: number;
+  household_number: string;
+  barangay: string;
+  purok_sito: string;
+  diffs: FieldDiff[];
+}
 
 const ImportData = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -21,6 +36,12 @@ const ImportData = () => {
   const [skippedLogs, setSkippedLogs] = useState<string[]>([]);
   const [templateBarangay, setTemplateBarangay] = useState('');
   const [showAbbreviations, setShowAbbreviations] = useState(false);
+
+  // Change-confirmation state
+  const [showChangeModal, setShowChangeModal] = useState(false);
+  const [changedHouseholds, setChangedHouseholds] = useState<ChangedHousehold[]>([]);
+  const [selectedForUpdate, setSelectedForUpdate] = useState<Set<number>>(new Set());
+  const [parsedHouseholds, setParsedHouseholds] = useState<any[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -351,40 +372,24 @@ const ImportData = () => {
     try {
       let households: any[] = [];
 
-      // Check file type
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
+
       if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-        // Parse Excel file (BNS Form format)
         households = await parseExcelFile(file);
       } else if (fileExtension === 'csv') {
-        // For CSV, we'll still send to backend for parsing
+        // CSV: send directly to backend (legacy path)
         const formData = new FormData();
         formData.append('file', file);
-        
         const response = await api.post('/households/import', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
-
-        setMessage({ 
-          type: 'success', 
-          text: response.data.message || 'Data imported successfully!' 
-        });
-        
-        if (response.data.stats) {
-          setImportStats(response.data.stats);
-        }
+        setMessage({ type: 'success', text: response.data.message || 'Data imported successfully!' });
+        if (response.data.stats) setImportStats(response.data.stats);
         setImportErrors(Array.isArray(response.data.errors) ? response.data.errors : []);
         setSkippedLogs(Array.isArray(response.data.skipped_logs) ? response.data.skipped_logs : []);
-
-        // Reset file input
         setFile(null);
-        const fileInput = document.getElementById('file-input') as HTMLInputElement;
-        if (fileInput) {
-          fileInput.value = '';
-        }
+        const fi = document.getElementById('file-input') as HTMLInputElement;
+        if (fi) fi.value = '';
         setImporting(false);
         return;
       } else {
@@ -395,20 +400,64 @@ const ImportData = () => {
         throw new Error('No data found in the file. Please check the file format.');
       }
 
-      // Send parsed data to backend
-      const response = await api.post('/households/import', {
-        households: households
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      // ── PHASE 1: Preview — detect changed households ──────────────────────
+      const previewResponse = await api.post('/households/preview-import', {
+        households,
       });
 
-      setMessage({ 
-        type: 'success', 
-        text: response.data.message || `Successfully imported ${households.length} household(s)!` 
+      const preview: any[] = previewResponse.data.preview ?? [];
+      const changed: ChangedHousehold[] = preview
+        .filter((p) => p.status === 'changed')
+        .map((p) => ({
+          index: p.index,
+          existingId: p.existingId,
+          household_number: p.household_number,
+          barangay: p.barangay,
+          purok_sito: p.purok_sito,
+          diffs: p.diffs,
+        }));
+
+      if (changed.length > 0) {
+        // Show confirmation modal — keep households in state for Phase 2
+        setParsedHouseholds(households);
+        setChangedHouseholds(changed);
+        setSelectedForUpdate(new Set(changed.map((c) => c.index)));
+        setShowChangeModal(true);
+        setImporting(false);
+        return;
+      }
+
+      // No changed households — run import directly
+      await runImport(households);
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || error.message || 'Error importing data. Please check the file format.',
       });
-      
+      setImporting(false);
+    }
+  };
+
+  // ── PHASE 2: Actual import (called after confirmation or directly) ────────
+  const runImport = async (households: any[], forceUpdateIndices?: Set<number>) => {
+    try {
+      const payload = households.map((hh, idx) => {
+        if (forceUpdateIndices && forceUpdateIndices.has(idx)) {
+          return { ...hh, force_update: true };
+        }
+        return hh;
+      });
+
+      const response = await api.post(
+        '/households/import',
+        { households: payload },
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+
+      setMessage({
+        type: 'success',
+        text: response.data.message || `Successfully imported ${households.length} household(s)!`,
+      });
       if (response.data.stats) {
         setImportStats(response.data.stats);
       } else {
@@ -425,17 +474,43 @@ const ImportData = () => {
       // Reset file input
       setFile(null);
       const fileInput = document.getElementById('file-input') as HTMLInputElement;
-      if (fileInput) {
-        fileInput.value = '';
-      }
+      if (fileInput) fileInput.value = '';
     } catch (error: any) {
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.message || error.message || 'Error importing data. Please check the file format.' 
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || error.message || 'Error importing data.',
       });
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleConfirmedImport = async () => {
+    setShowChangeModal(false);
+    setImporting(true);
+    await runImport(parsedHouseholds, selectedForUpdate);
+  };
+
+  const handleSkipAllChanges = async () => {
+    setShowChangeModal(false);
+    setImporting(true);
+    // Run import with no force_update flags — changed ones will be skipped as duplicates
+    await runImport(parsedHouseholds);
+  };
+
+  const toggleHouseholdForUpdate = (index: number) => {
+    setSelectedForUpdate((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const formatDisplayValue = (value: any): string => {
+    if (value === null || value === undefined || value === '') return '—';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    return String(value);
   };
 
   const downloadTemplate = async () => {
@@ -603,7 +678,7 @@ const ImportData = () => {
       {skippedLogs.length > 0 && (
         <div className="import-instructions" style={{ marginBottom: '24px' }}>
           <h3>Skipped Duplicate Logs</h3>
-          <ol>
+          <ol className="scrollable-logs">
             {skippedLogs.map((log, idx) => (
               <li key={`${idx}-${log}`}>{log}</li>
             ))}
@@ -631,7 +706,7 @@ const ImportData = () => {
         <div className="import-card">
           <h2>Upload File</h2>
           <p>Select a CSV or Excel file containing household data to import.</p>
-          
+
           <div className="file-upload-area">
             <input
               id="file-input"
@@ -666,15 +741,15 @@ const ImportData = () => {
           </div>
 
           <div className="import-actions">
-            <button 
-              onClick={handleImport} 
+            <button
+              onClick={handleImport}
               className="import-btn"
               disabled={!file || importing}
             >
               {importing ? 'Importing...' : 'Import Data'}
             </button>
-            <button 
-              onClick={downloadTemplate} 
+            <button
+              onClick={downloadTemplate}
               className="template-btn"
               disabled={!templateBarangay}
             >
@@ -834,6 +909,92 @@ const ImportData = () => {
                   <div className="abbr-item"><span className="code">NA</span><span className="desc">None</span></div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Change Confirmation Modal ──────────────────────────────── */}
+      {showChangeModal && (
+        <div className="change-modal-overlay" onClick={() => setShowChangeModal(false)}>
+          <div className="change-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="change-modal-header">
+              <div>
+                <h3>Changes Detected</h3>
+                <p className="change-modal-subtitle">
+                  {changedHouseholds.length} household{changedHouseholds.length > 1 ? 's have' : ' has'} different data
+                  compared to what is already in the system. Select which ones to update.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="abbr-modal-close"
+                aria-label="Close"
+                onClick={() => setShowChangeModal(false)}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="change-modal-body">
+              {changedHouseholds.map((ch) => (
+                <div key={ch.index} className={`change-household-card ${selectedForUpdate.has(ch.index) ? 'selected' : ''}`}>
+                  <div className="change-household-card-header">
+                    <label className="change-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={selectedForUpdate.has(ch.index)}
+                        onChange={() => toggleHouseholdForUpdate(ch.index)}
+                        className="change-checkbox"
+                      />
+                      <span className="change-hh-title">
+                        Household No. <strong>{ch.household_number}</strong>
+                      </span>
+                    </label>
+                    <span className="change-hh-location">
+                      {ch.barangay} / {ch.purok_sito}
+                    </span>
+                  </div>
+                  <div className="change-diff-table-wrapper">
+                    <table className="change-diff-table">
+                      <thead>
+                        <tr>
+                          <th>Field</th>
+                          <th>Current (in system)</th>
+                          <th>New (from Excel)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ch.diffs.map((diff) => (
+                          <tr key={diff.field}>
+                            <td className="diff-field-label">{diff.label}</td>
+                            <td className="diff-old">{formatDisplayValue(diff.oldValue)}</td>
+                            <td className="diff-new">{formatDisplayValue(diff.newValue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="change-modal-footer">
+              <button
+                type="button"
+                className="change-skip-btn"
+                onClick={handleSkipAllChanges}
+              >
+                Skip All Changes
+              </button>
+              <button
+                type="button"
+                className="change-confirm-btn"
+                onClick={handleConfirmedImport}
+                disabled={selectedForUpdate.size === 0}
+              >
+                Confirm Update ({selectedForUpdate.size} household{selectedForUpdate.size !== 1 ? 's' : ''})
+              </button>
             </div>
           </div>
         </div>

@@ -67,6 +67,7 @@ export interface SurveySummary {
 export interface SummaryFilters {
   barangay: string;
   purokBlockStreet: string;
+  combinedPuroks?: string[];
   surveyYear: string;
   surveyPeriodFrom: string;
   surveyPeriodTo: string;
@@ -173,7 +174,9 @@ export function applyFilters(
   if (filters.barangay) {
     list = list.filter((h: any) => (h.barangay || '') === filters.barangay);
   }
-  if (filters.purokBlockStreet) {
+  if (filters.combinedPuroks && filters.combinedPuroks.length > 0) {
+    list = list.filter((h: any) => filters.combinedPuroks!.includes(String(h.purok_sito || '').trim()));
+  } else if (filters.purokBlockStreet) {
     list = list.filter((h: any) => String(h.purok_sito || '').trim() === filters.purokBlockStreet);
   }
   if (filters.surveyYear) {

@@ -16,7 +16,7 @@ export const BNS_BY_BARANGAY: Record<string, string[]> = {
   Bigaa: ['Jenet D. Perez'],
   Diezmo: ['Epifania C. Llanto'],
   Pittland: ['Evelyn De Castro'],
-  Casile: ['Belen Andres'],
+  Casile: ['Belen D. Andes'],
 };
 
 export const getBnsOptions = (barangay: string): string[] => BNS_BY_BARANGAY[barangay] || [];
