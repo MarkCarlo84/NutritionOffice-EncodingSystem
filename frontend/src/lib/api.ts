@@ -17,7 +17,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('nutrition_office_token');
+      sessionStorage.removeItem('nutrition_office_token');
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }

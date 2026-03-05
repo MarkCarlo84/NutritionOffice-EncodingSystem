@@ -23,7 +23,7 @@ const Layout = () => {
       <aside className="sidebar">
         <div className="sidebar-header">
           <img src={nutritionOfficeLogo} alt="Nutrition Office" className="sidebar-logo" />
-          <h1 className="sidebar-title">Nutrition Office Encoder</h1>
+          <h1 className="sidebar-title">Nutrition Office Cabuyao</h1>
         </div>
 
         <nav className="sidebar-nav" aria-label="Main navigation">

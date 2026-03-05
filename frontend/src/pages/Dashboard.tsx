@@ -28,27 +28,27 @@ const Dashboard = () => {
         // Laravel pagination: response.data.data = items, response.data.total = total count
         const households = response.data?.data ?? response.data ?? [];
         const totalEncoded = response.data?.total ?? (Array.isArray(households) ? households.length : 0);
-        
+
         const list = Array.isArray(households) ? households : [];
-        
+
         // Barangays covered: unique barangays with records
         const uniqueBarangays = new Set(list.map((h: any) => h.barangay).filter(Boolean));
         const barangaysCovered = uniqueBarangays.size;
-        
+
         // Sex distribution: sum male/female from all age groups in records
         let maleCount = 0;
         let femaleCount = 0;
-        
+
         list.forEach((household: any) => {
           maleCount += (household.newborn_male || 0) + (household.infant_male || 0) +
-                      (household.under_five_male || 0) + (household.children_male || 0) +
-                      (household.adolescence_male || 0) + (household.adult_male || 0) +
-                      (household.senior_citizen_male || 0) + (household.pwd_male || 0);
-          
+            (household.under_five_male || 0) + (household.children_male || 0) +
+            (household.adolescence_male || 0) + (household.adult_male || 0) +
+            (household.senior_citizen_male || 0) + (household.pwd_male || 0);
+
           femaleCount += (household.newborn_female || 0) + (household.infant_female || 0) +
-                        (household.under_five_female || 0) + (household.children_female || 0) +
-                        (household.adolescence_female || 0) + (household.adult_female || 0) +
-                        (household.senior_citizen_female || 0) + (household.pwd_female || 0);
+            (household.under_five_female || 0) + (household.children_female || 0) +
+            (household.adolescence_female || 0) + (household.adult_female || 0) +
+            (household.senior_citizen_female || 0) + (household.pwd_female || 0);
         });
 
         // Last update: most recent updated_at across all records
@@ -58,10 +58,10 @@ const Dashboard = () => {
             ...list.map((h: any) => new Date(h.updated_at || 0).getTime())
           );
           if (latestTimestamp > 0) {
-            lastUpdate = new Date(latestTimestamp).toLocaleDateString('en-US', { 
-              month: '2-digit', 
-              day: '2-digit', 
-              year: '2-digit' 
+            lastUpdate = new Date(latestTimestamp).toLocaleDateString('en-US', {
+              month: '2-digit',
+              day: '2-digit',
+              year: '2-digit'
             });
           }
         }
@@ -78,26 +78,22 @@ const Dashboard = () => {
           'Pulo',
           'Sala',
           'San Isidro',
-          'Poblacion Uno',
-          'Poblacion Dos',
-          'Poblacion Tres',
+          'Pob. Uno',
+          'Pob. Dos',
+          'Pob. Tres',
         ];
 
-        // Display name mapping for shortened names
-        const barangayDisplayNames: { [key: string]: string } = {
-          'Poblacion Uno': 'Pob. Uno',
-          'Poblacion Dos': 'Pob. Dos',
-          'Poblacion Tres': 'Pob. Tres',
-        };
+        // Display name mapping (none needed currently)
+        const barangayDisplayNames: { [key: string]: string } = {};
 
         // Calculate barangay distribution
         const barangayCounts: { [key: string]: number } = {};
-        
+
         // Initialize all barangays with 0 count
         allBarangays.forEach(barangay => {
           barangayCounts[barangay] = 0;
         });
-        
+
         // Count actual records per barangay
         list.forEach((household: any) => {
           const barangay = household.barangay || 'Unknown';
@@ -143,7 +139,7 @@ const Dashboard = () => {
         <div className="metric-card">
           <h3 className="metric-title">Total Encoded</h3>
           <p className="metric-value">
-            {loading ? '0' : stats.totalEncoded}
+            {loading ? '0' : stats.totalEncoded.toLocaleString()}
           </p>
           <p className="metric-subtitle">All Data</p>
         </div>
@@ -159,7 +155,7 @@ const Dashboard = () => {
         <div className="metric-card">
           <h3 className="metric-title">Sex Distribution</h3>
           <p className="metric-value">
-            {loading ? '—' : `${stats.maleCount} Male ${stats.femaleCount} Female`}
+            {loading ? '—' : `${stats.maleCount.toLocaleString()} Male ${stats.femaleCount.toLocaleString()} Female`}
           </p>
           <p className="metric-subtitle">Current encoded mix</p>
         </div>
@@ -182,7 +178,7 @@ const Dashboard = () => {
             {barangayData.length > 0 ? (() => {
               // Calculate the maximum value from actual data
               const maxCount = Math.max(...barangayData.map(d => d.count));
-              
+
               // Calculate a nice maximum for the Y-axis (round up to next nice number)
               const getNiceMax = (max: number): number => {
                 if (max === 0) return 5; // Show at least 0-5 when all values are 0
@@ -193,9 +189,9 @@ const Dashboard = () => {
                 if (max <= 100) return Math.ceil(max / 20) * 20;
                 return Math.ceil(max / 50) * 50;
               };
-              
+
               const niceMax = getNiceMax(maxCount);
-              
+
               // Generate Y-axis labels based on the nice maximum
               const generateYAxisLabels = (max: number): number[] => {
                 if (max <= 5) return [5, 4, 3, 2, 1, 0];
@@ -208,9 +204,9 @@ const Dashboard = () => {
                 }
                 return labels;
               };
-              
+
               const yAxisLabels = generateYAxisLabels(niceMax);
-              
+
               return (
                 <>
                   <div className="chart-y-axis">
@@ -228,8 +224,8 @@ const Dashboard = () => {
                         const displayName = item.displayName || item.barangay;
                         return (
                           <div key={index} className="bar-wrapper">
-                            <div 
-                              className="bar" 
+                            <div
+                              className="bar"
                               style={{ height: `${height}%` }}
                               title={`${displayName}: ${item.count} records`}
                             >

@@ -30,6 +30,8 @@ const ExportData = () => {
     bns: '',
     barangay: '',
     purokBlockStreet: '',
+    combinedPuroks: [] as string[],
+    customPurokText: '',
     surveyYear: '',
     surveyPeriodFrom: '',
     surveyPeriodTo: '',
@@ -42,6 +44,8 @@ const ExportData = () => {
     barangay: '',
     purokSitio: '',
   });
+
+  const [isPurokModalOpen, setIsPurokModalOpen] = useState(false);
 
   // Households from system to build Purok options per barangay
   const [householdsForFilters, setHouseholdsForFilters] = useState<{ barangay: string; purok_sito: string }[]>([]);
@@ -92,6 +96,8 @@ const ExportData = () => {
       barangay,
       bns: resolveBnsForBarangay(barangay, f.bns),
       purokBlockStreet: '',
+      combinedPuroks: [],
+      customPurokText: '',
     }));
   };
 
@@ -187,7 +193,7 @@ const ExportData = () => {
         return '';
       };
 
-      const ageFields = ['newborn_male','newborn_female','infant_male','infant_female','under_five_male','under_five_female','children_male','children_female','adolescence_male','adolescence_female','pregnant','adolescent_pregnant','post_partum','women_15_49_not_pregnant','adult_male','adult_female','senior_citizen_male','senior_citizen_female','pwd_male','pwd_female'];
+      const ageFields = ['newborn_male', 'newborn_female', 'infant_male', 'infant_female', 'under_five_male', 'under_five_female', 'children_male', 'children_female', 'adolescence_male', 'adolescence_female', 'pregnant', 'adolescent_pregnant', 'post_partum', 'women_15_49_not_pregnant', 'adult_male', 'adult_female', 'senior_citizen_male', 'senior_citizen_female', 'pwd_male', 'pwd_female'];
 
       // Build body: one row per household; row height varies so names fit (Fa/Mo/Ca in separate bands)
       const minRowH = 42; // original height so Fa/Mo/Ca names fit comfortably
@@ -254,7 +260,7 @@ const ExportData = () => {
         { content: 'HH using Iron-Fortified Rice', rowSpan: 2 },
       ]);
       headRows.push([
-        'M','F','M','F','M','F','M','F','M','F','F','F','F','F','M','F','M','F','M','F',
+        'M', 'F', 'M', 'F', 'M', 'F', 'M', 'F', 'M', 'F', 'F', 'F', 'F', 'F', 'M', 'F', 'M', 'F', 'M', 'F',
       ]);
       // C-label row under the header (C1..C34)
       headRows.push(Array.from({ length: 34 }, (_, i) => `C${i + 1}`));
@@ -373,7 +379,7 @@ const ExportData = () => {
                 data.cell.styles.minCellHeight = rowHeights[rowIndex];
               }
               // Data centered (default halign: 'center'); only C26/C27/C28 use custom drawing
-              if ([25,26,27].includes(colIndex)) {
+              if ([25, 26, 27].includes(colIndex)) {
                 data.cell.styles.valign = 'top';
                 data.cell.styles.fontSize = 5;
               }
@@ -651,7 +657,7 @@ const ExportData = () => {
     }
   };
 
-  
+
 
   const handleExportSurveySummary = async () => {
     setExporting(true);
@@ -663,6 +669,7 @@ const ExportData = () => {
       const filtered = applyFilters(households, {
         barangay: summaryFilters.barangay,
         purokBlockStreet: summaryFilters.purokBlockStreet,
+        combinedPuroks: summaryFilters.combinedPuroks,
         surveyYear: summaryFilters.surveyYear,
         surveyPeriodFrom: summaryFilters.surveyPeriodFrom,
         surveyPeriodTo: summaryFilters.surveyPeriodTo,
@@ -670,17 +677,21 @@ const ExportData = () => {
       const s = aggregateSummary(filtered);
       s.basic.bns = summaryFilters.bns || '—';
       s.basic.barangay = summaryFilters.barangay ? (BARANGAY_DISPLAY[summaryFilters.barangay] || summaryFilters.barangay) : 'All Barangays';
-      s.basic.purokBlockStreet = summaryFilters.purokBlockStreet || '—';
-      if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)}`;
-      } else if (summaryFilters.surveyPeriodFrom) {
-        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)}`;
-      } else if (summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)}`;
-      } else {
-        s.basic.surveyPeriod = summaryFilters.surveyYear ? summaryFilters.surveyYear : '—';
+      let displayPurok = summaryFilters.purokBlockStreet || '—';
+      if (summaryFilters.combinedPuroks && summaryFilters.combinedPuroks.length > 0) {
+        displayPurok = summaryFilters.customPurokText || summaryFilters.combinedPuroks.join(', ');
       }
+      s.basic.purokBlockStreet = displayPurok;
       s.basic.surveyYear = summaryFilters.surveyYear || new Date().getFullYear().toString();
+      if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)} ${s.basic.surveyYear}`;
+      } else if (summaryFilters.surveyPeriodFrom) {
+        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)} ${s.basic.surveyYear}`;
+      } else if (summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)} ${s.basic.surveyYear}`;
+      } else {
+        s.basic.surveyPeriod = s.basic.surveyYear;
+      }
 
       const year = new Date().getFullYear();
       const workbook = new ExcelJS.Workbook();
@@ -689,130 +700,179 @@ const ExportData = () => {
       ws.pageSetup.fitToPage = true;
       ws.properties.defaultRowHeight = 18;
 
-      const thinBorder = { top: { style: 'thin' as const }, left: { style: 'thin' as const }, bottom: { style: 'thin' as const }, right: { style: 'thin' as const } };
       const headerFont = { bold: true, size: 11 };
       const titleFont = { bold: true, size: 14 };
 
       const r1 = ws.addRow(['Republika ng Pilipinas']);
-      ws.mergeCells(1, 1, 1, 6);
+      ws.mergeCells(1, 1, 1, 8);
       r1.getCell(1).font = { size: 11 };
       r1.getCell(1).alignment = { horizontal: 'center' };
 
       const r2 = ws.addRow(['Lalawigan ng Laguna']);
-      ws.mergeCells(2, 1, 2, 6);
+      ws.mergeCells(2, 1, 2, 8);
       r2.getCell(1).font = { size: 11 };
       r2.getCell(1).alignment = { horizontal: 'center' };
 
       const r3 = ws.addRow(['Pamahalaang Lungsod ng CABUYAO']);
-      ws.mergeCells(3, 1, 3, 6);
+      ws.mergeCells(3, 1, 3, 8);
       r3.getCell(1).font = headerFont;
       r3.getCell(1).alignment = { horizontal: 'center' };
 
       const r4 = ws.addRow(['TANGGAPANG PANLUNGSOD NG NUTRISYON']);
-      ws.mergeCells(4, 1, 4, 6);
+      ws.mergeCells(4, 1, 4, 8);
       r4.getCell(1).font = headerFont;
       r4.getCell(1).alignment = { horizontal: 'center' };
 
       const r5 = ws.addRow([`FAMILY PROFILE Survey Summary ${year}`]);
-      ws.mergeCells(5, 1, 5, 6);
+      ws.mergeCells(5, 1, 5, 8);
       r5.getCell(1).font = titleFont;
       r5.getCell(1).alignment = { horizontal: 'center' };
 
       ws.addRow([]);
-      const r7 = ws.addRow(['BARANGAY', '', 'PUROK / BLOCK / SITIO', '', 'SURVEY PERIOD & YEAR', '']);
-      r7.getCell(1).value = 'BARANGAY';
-      r7.getCell(2).value = s.basic.barangay;
-      r7.getCell(3).value = 'PUROK / BLOCK / STREET';
-      r7.getCell(4).value = s.basic.purokBlockStreet;
-      r7.getCell(5).value = 'SURVEY PERIOD & YEAR';
-      r7.getCell(6).value = s.basic.surveyPeriod || s.basic.surveyYear;
-      r7.eachCell((c, colNumber) => {
-        c.font = headerFont;
-        c.border = thinBorder;
-        if (colNumber === 2 || colNumber === 4 || colNumber === 6) c.alignment = { ...c.alignment, horizontal: 'center' };
+      // Row 7 Headers
+      const r7 = ws.getRow(7);
+      r7.getCell(1).value = `BARANGAY NUTRITION SCHOLAR:  ${s.basic.bns}`;
+      r7.getCell(4).value = `BARANGAY:  ${s.basic.barangay}        PUROK / BLOCK / STREET:  ${s.basic.purokBlockStreet}`;
+      r7.getCell(7).value = `SURVEY PERIOD & YEAR:  ${s.basic.surveyPeriod || s.basic.surveyYear}`;
+      [1, 4, 7].forEach((col) => {
+        r7.getCell(col).font = { size: 10, bold: true };
       });
+      ws.addRow([]); // Blank row 8
 
-      const col1: [string, string | number][] = [
-        ['BARANGAY NUTRITION SCHOLAR', s.basic.bns],
+      const leftCol: [string, any][] = [
         ['Total No. of Households', s.totals.households],
         ['Total No. of Families', s.totals.families],
-        ['Family Size: more than 10', s.familySize.moreThan10],
-        ['Family Size: 8-10', s.familySize.n8to10],
-        ['Family Size: 6-7', s.familySize.n6to7],
-        ['Family Size: 2-5', s.familySize.n2to5],
-        ['Family Size: 1', s.familySize.n1],
+        ['Family Size:', ''],
+        ['     more than 10', s.familySize.moreThan10],
+        ['     8 - 10', s.familySize.n8to10],
+        ['     6 - 7', s.familySize.n6to7],
+        ['     2 - 5', s.familySize.n2to5],
+        ['     1', s.familySize.n1],
         ['Total No. of Purok/Block/Street', s.totals.purokBlockStreet],
         ['Total Population', s.totals.population],
         ['No. of Family Members by Age Classification & Health Risk Group:', ''],
-        ['Newborn 0-28 days', s.ageHealth.newborn],
-        ['Infants 29 days - 11 mos', s.ageHealth.infants],
-        ['Under-five 1-4 years old', s.ageHealth.underFive],
-        ['Children 5-9 years old', s.ageHealth.children5_9],
-        ['Adolescents 10-19 y.o.', s.ageHealth.adolescence],
-        ['Pregnant', s.ageHealth.pregnant],
-        ['Adolescent Pregnant', s.ageHealth.adolescentPregnant],
-        ['Post-Partum', s.ageHealth.postPartum],
-        ['15-49 y.o. (non pregnant & non-PP)', s.ageHealth.women15_49],
-        ['Adult 20-59 y.o.', s.ageHealth.adult],
-        ['Senior Citizens', s.ageHealth.seniorCitizens],
-        ['Persons with Disability', s.ageHealth.pwd],
-        ['Father Occupation', ''],
-        ...OCC_LABELS.map((lbl, i) => [lbl, s.fatherOcc[i] ?? 0] as [string, number]),
-        ['Father Educational Attainment', ''],
-        ...ED_LABELS.map((lbl, i) => [lbl, s.fatherEd[i] ?? 0] as [string, number]),
+        ['     Newborn 0 - 28 days', s.ageHealth.newborn],
+        ['     Infants 29 days - 11 mos', s.ageHealth.infants],
+        ['     Under-five 1 - 4 years old', s.ageHealth.underFive],
+        ['     Children 5 - 9 years old', s.ageHealth.children5_9],
+        ['     Adolescents 10-19 y.o.', s.ageHealth.adolescence],
+        ['     Pregnant', s.ageHealth.pregnant],
+        ['     Adolescent Pregnant', s.ageHealth.adolescentPregnant],
+        ['     Post-Partum', s.ageHealth.postPartum],
+        ['     15-49 y.o. (non pregnant & non-PP)', s.ageHealth.women15_49],
+        ['     Adult 20-59 y.o.', s.ageHealth.adult],
+        ['     Senior Citizens', s.ageHealth.seniorCitizens],
+        ['     Persons with Disability', s.ageHealth.pwd],
+        ['Father:', ''],
+        ['Occupation', ''],
+        ...OCC_LABELS.map((lbl, i) => [`     ${lbl}`, s.fatherOcc[i] ?? 0] as [string, any]),
+        ['Educational Attainment', ''],
+        ...ED_LABELS.map((lbl, i) => [`     ${lbl}`, s.fatherEd[i] ?? 0] as [string, any]),
       ];
-      const col2: [string, string | number][] = [
-        ['Mother Occupation', ''],
-        ...OCC_LABELS.map((lbl, i) => [lbl, s.motherOcc[i] ?? 0] as [string, number]),
-        ['Mother Educational Attainment', ''],
-        ...ED_LABELS.map((lbl, i) => [lbl, s.motherEd[i] ?? 0] as [string, number]),
-        ['Caregiver Occupation', ''],
-        ...OCC_LABELS.map((lbl, i) => [lbl, s.caregiverOcc[i] ?? 0] as [string, number]),
-        ['Caregiver Educational Attainment', ''],
-        ...ED_LABELS.map((lbl, i) => [lbl, s.caregiverEd[i] ?? 0] as [string, number]),
+
+      const midCol: [string, any][] = [
+        ['Mother:', ''],
+        ['Occupation', ''],
+        ...OCC_LABELS.map((lbl, i) => [`     ${lbl}`, s.motherOcc[i] ?? 0] as [string, any]),
+        ['Educational Attainment', ''],
+        ...ED_LABELS.map((lbl, i) => [`     ${lbl}`, s.motherEd[i] ?? 0] as [string, any]),
+        ['Caregiver:', ''],
+        ['Occupation', ''],
+        ...OCC_LABELS.map((lbl, i) => [`     ${lbl}`, s.caregiverOcc[i] ?? 0] as [string, any]),
+        ['Educational Attainment', ''],
+        ...ED_LABELS.map((lbl, i) => [`     ${lbl}`, s.caregiverEd[i] ?? 0] as [string, any]),
       ];
-      const col3: [string, string | number][] = [
+
+      const rightCol: [string, any][] = [
         ['Total No. of Couple Practicing Family Planning', s.practices.coupleFP],
-        ['Households with: Toilet Type', ''],
-        ['Improved Sanitation', s.practices.toiletImproved],
-        ['Shared Facility', s.practices.toiletShared],
-        ['Unimproved', s.practices.toiletUnimproved],
-        ['Open defecation', s.practices.toiletOpen],
-        ['Water Source', ''],
-        ['Improved water source', s.practices.waterImproved],
-        ['Unimproved water source', s.practices.waterUnimproved],
-        ['Food Production', ''],
-        ['VG_Vegetable garden', s.practices.foodVG],
-        ['FT_Fruit', s.practices.foodFruit],
-        ['PL_Poultry/livestock', s.practices.foodPL],
-        ['FP_Fishpond', s.practices.foodFP],
-        ['NA_None', s.practices.foodNone],
-        ['Households using: Iodized salt', s.practices.iodizedSalt],
-        ['Households using: Iron-Fortified Rice', s.practices.ironFortifiedRice],
+        ['', ''],
+        ['Households with:', ''],
+        ['     Toilet Type:', ''],
+        ['          Improved Sanitation', s.practices.toiletImproved],
+        ['          Shared Facility', s.practices.toiletShared],
+        ['          Unimproved', s.practices.toiletUnimproved],
+        ['          Open defecation', s.practices.toiletOpen],
+        ['     Water Source:', ''],
+        ['          Improved water source', s.practices.waterImproved],
+        ['          Unimproved water source', s.practices.waterUnimproved],
+        ['     Food Production:', ''],
+        ['          VG_Vegetable garden', s.practices.foodVG],
+        ['          FT_Fruit', s.practices.foodFruit],
+        ['          PL_Poultry/livestock', s.practices.foodPL],
+        ['          FP_Fishpond', s.practices.foodFP],
+        ['          NA_None', s.practices.foodNone],
+        ['', ''],
+        ['Households using:', ''],
+        ['     Iodized salt', s.practices.iodizedSalt],
+        ['     Iron-Fortified Rice', s.practices.ironFortifiedRice],
       ];
-      const maxLen = Math.max(col1.length, col2.length, col3.length);
-      for (let i = 0; i < maxLen; i++) {
-        const row = ws.addRow([
-          i < col1.length ? col1[i][0] : '',
-          i < col1.length ? col1[i][1] : '',
-          i < col2.length ? col2[i][0] : '',
-          i < col2.length ? col2[i][1] : '',
-          i < col3.length ? col3[i][0] : '',
-          i < col3.length ? col3[i][1] : '',
-        ]);
-        row.eachCell((cell, colNumber) => {
-          cell.border = thinBorder;
-          cell.alignment = { vertical: 'middle', wrapText: true };
-          if (colNumber === 2 || colNumber === 4 || colNumber === 6) cell.alignment = { ...cell.alignment, horizontal: 'center' };
+
+      const maxRows = Math.max(leftCol.length, midCol.length, rightCol.length);
+      const startRow = 9;
+
+      for (let i = 0; i < maxRows; i++) {
+        const row = ws.getRow(startRow + i);
+        row.height = 16;
+
+        if (i < leftCol.length) {
+          row.getCell(1).value = leftCol[i][0];
+          row.getCell(2).value = leftCol[i][1];
+        }
+
+        if (i < midCol.length) {
+          row.getCell(4).value = midCol[i][0];
+          row.getCell(5).value = midCol[i][1];
+        }
+
+        if (i < rightCol.length) {
+          row.getCell(7).value = rightCol[i][0];
+          row.getCell(8).value = rightCol[i][1];
+        }
+
+        [2, 5, 8].forEach((col) => {
+          const c = row.getCell(col);
+          if (c.value !== '') {
+            c.alignment = { horizontal: 'center' };
+            c.border = { bottom: { style: 'thin' } };
+          }
         });
       }
 
-      ws.getColumn(1).width = 42;
+      const applyBox = (startCol: number, endCol: number, topRow: number, bottomRow: number) => {
+        for (let r = topRow; r <= bottomRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            const cell = ws.getRow(r).getCell(c);
+            let border: any = cell.border ? { ...cell.border } : {};
+            if (r === topRow) border.top = { style: 'thin' };
+            if (r === bottomRow) border.bottom = { style: 'thin' };
+            if (c === startCol) border.left = { style: 'thin' };
+            if (c === endCol) border.right = { style: 'thin' };
+            cell.border = border;
+          }
+        }
+      };
+
+      const endRow = startRow + maxRows - 1;
+      applyBox(1, 2, startRow, endRow);
+      applyBox(4, 5, startRow, endRow);
+      applyBox(7, 8, startRow, endRow);
+
+      // Add footer text inside right box at bottom
+      const footerRow = endRow - 1;
+      const fCell = ws.getRow(footerRow).getCell(7);
+      fCell.value = '1 copy BNS / 1 copy BNC / 1 copy CNO';
+      fCell.font = { size: 8, italic: true };
+      fCell.alignment = { horizontal: 'right' };
+      ws.mergeCells(footerRow, 7, footerRow, 8);
+
+      ws.getColumn(1).width = 38;
       ws.getColumn(2).width = 12;
-      ws.getColumn(3).width = 42;
-      ws.getColumn(4).width = 12;
-      ws.getColumn(5).width = 42;
-      ws.getColumn(6).width = 14;
+      ws.getColumn(3).width = 2;
+      ws.getColumn(4).width = 38;
+      ws.getColumn(5).width = 12;
+      ws.getColumn(6).width = 2;
+      ws.getColumn(7).width = 38;
+      ws.getColumn(8).width = 12;
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -840,6 +900,7 @@ const ExportData = () => {
       const filtered = applyFilters(households, {
         barangay: summaryFilters.barangay,
         purokBlockStreet: summaryFilters.purokBlockStreet,
+        combinedPuroks: summaryFilters.combinedPuroks,
         surveyYear: summaryFilters.surveyYear,
         surveyPeriodFrom: summaryFilters.surveyPeriodFrom,
         surveyPeriodTo: summaryFilters.surveyPeriodTo,
@@ -847,20 +908,24 @@ const ExportData = () => {
       const s = aggregateSummary(filtered);
       s.basic.bns = summaryFilters.bns || '—';
       s.basic.barangay = summaryFilters.barangay ? (BARANGAY_DISPLAY[summaryFilters.barangay] || summaryFilters.barangay) : 'All Barangays';
-      s.basic.purokBlockStreet = summaryFilters.purokBlockStreet || '—';
-      if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)}`;
-      } else if (summaryFilters.surveyPeriodFrom) {
-        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)}`;
-      } else if (summaryFilters.surveyPeriodTo) {
-        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)}`;
-      } else {
-        s.basic.surveyPeriod = summaryFilters.surveyYear ? summaryFilters.surveyYear : '—';
+      let displayPurok = summaryFilters.purokBlockStreet || '—';
+      if (summaryFilters.combinedPuroks && summaryFilters.combinedPuroks.length > 0) {
+        displayPurok = summaryFilters.customPurokText || summaryFilters.combinedPuroks.join(', ');
       }
+      s.basic.purokBlockStreet = displayPurok;
       s.basic.surveyYear = summaryFilters.surveyYear || new Date().getFullYear().toString();
+      if (summaryFilters.surveyPeriodFrom && summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `${monthLabel(summaryFilters.surveyPeriodFrom)} - ${monthLabel(summaryFilters.surveyPeriodTo)} ${s.basic.surveyYear}`;
+      } else if (summaryFilters.surveyPeriodFrom) {
+        s.basic.surveyPeriod = `From ${monthLabel(summaryFilters.surveyPeriodFrom)} ${s.basic.surveyYear}`;
+      } else if (summaryFilters.surveyPeriodTo) {
+        s.basic.surveyPeriod = `To ${monthLabel(summaryFilters.surveyPeriodTo)} ${s.basic.surveyYear}`;
+      } else {
+        s.basic.surveyPeriod = s.basic.surveyYear;
+      }
 
       const year = new Date().getFullYear();
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [936, 612] /* 8.5 x 13 inches */ });
       const pageWidth = (doc.internal.pageSize as any).getWidth();
       const pageHeight = (doc.internal.pageSize as any).getHeight();
 
@@ -881,7 +946,10 @@ const ExportData = () => {
       const colW = (pageWidth - smallMargin * 2) / 3;
       const colX = [smallMargin, smallMargin + colW, smallMargin + 2 * colW];
       const colY = 96;
-      const colH = pageHeight - colY - smallMargin;
+
+      // Calculate max content height (left column has the most lines, roughly 480pt total height including padding)
+      const colH = 480;
+
       doc.setLineWidth(0.5);
       for (let i = 0; i < 3; i++) {
         doc.rect(colX[i], colY, colW, colH);
@@ -906,11 +974,11 @@ const ExportData = () => {
       // Middle: Purok right-aligned in middle column to avoid collision
       doc.text(`PUROK / BLOCK / SITIO: ${purokText}`, colX[1] + colW + 6, labelY, { align: 'right' });
       // Right: Survey period & year
-      doc.text(`SURVEY PERIOD & YEAR: ${surveyText}`, colX[2] + colW - 46, labelY, { align: 'right' });
+      doc.text(`SURVEY PERIOD & YEAR: ${surveyText}`, colX[2] + colW - 8, labelY, { align: 'right' });
 
       // normalize columns: single starting Y and consistent line height
-      const colStartY = colY + 10;
-      const lineH = 9;
+      const colStartY = colY + 12;
+      const lineH = 10;
 
       // helper: write a right-aligned value and draw an underline under it
       const drawValue = (xRight: number, yPos: number, val: any, underlineWidth = 36) => {
@@ -928,7 +996,7 @@ const ExportData = () => {
 
       // Left column
       let yLeft = colStartY;
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       const leftLines2 = [
         ['Total No. of Households', String(s.totals.households ?? '')],
         ['Total No. of Families', String(s.totals.families ?? '')],
@@ -988,7 +1056,7 @@ const ExportData = () => {
 
       // Middle column
       let yMid = colStartY;
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       doc.text('Mother - Occupation', colX[1] + 6, yMid);
       yMid += lineH;
       OCC_LABELS.forEach((lbl, i) => {
@@ -1024,7 +1092,7 @@ const ExportData = () => {
 
       // Right column
       let yRight = colStartY;
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       doc.text('Total No. of Couple Practicing Family Planning', colX[2] + 8, yRight);
       drawValue(colX[2] + colW - 18, yRight, s.practices.coupleFP ?? 0, 28);
       yRight += lineH;
@@ -1073,6 +1141,12 @@ const ExportData = () => {
       yRight += lineH;
       doc.text('Iron-Fortified Rice', colX[2] + 14, yRight);
       drawValue(colX[2] + colW - 18, yRight, s.practices.ironFortifiedRice ?? 0, 28);
+
+      // Add footer text inside right box exactly at bottom right corner like Excel
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.text('1 copy BNS / 1 copy BNC / 1 copy CNO', colX[2] + colW - 6, colY + colH - 6, { align: 'right' });
+      doc.setFont('helvetica', 'normal'); // Reset font style
 
       const fileName = `Family-Profile-Survey-Summary-${year}-${summaryFilters.barangay || 'All'}.pdf`;
       doc.save(fileName);
@@ -1126,16 +1200,74 @@ const ExportData = () => {
                 ]}
               />
             </div>
-            <div className="filter-row">
+            <div className={`filter-row ${summaryFilters.combinedPuroks.length > 0 ? 'span-2' : ''}`} style={{ minWidth: 0 }}>
               <label>Purok / Block / Street</label>
-              <DownwardSelect
-                value={summaryFilters.purokBlockStreet}
-                options={summaryPurokOptions}
-                placeholder="All"
-                onChange={(v) => setSummaryFilters((f) => ({ ...f, purokBlockStreet: v }))}
-              />
+              <div style={{ display: 'flex', gap: '8px', minWidth: 0 }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsPurokModalOpen(true)}
+                    style={{
+                      width: '100%',
+                      minHeight: '40px',
+                      padding: '10px 30px 10px 12px',
+                      border: '1px solid var(--color-border-neutral)',
+                      borderRadius: 'var(--radius)',
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'block',
+                      boxShadow: 'none',
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-border-neutral)'; }}
+                  >
+                    {summaryFilters.combinedPuroks.length === 0
+                      ? 'All'
+                      : summaryFilters.combinedPuroks.join(', ')}
+                  </button>
+                  {/* Arrow indicator */}
+                  <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: '11px', opacity: 0.8 }}>
+                    ▼
+                  </div>
+                </div>
+                {summaryFilters.combinedPuroks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSummaryFilters((f) => ({ ...f, combinedPuroks: [], customPurokText: '' }))}
+                    style={{
+                      padding: '0 12px',
+                      background: '#fef2f2',
+                      color: '#ef4444',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: '0 0 auto',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {/* Optional custom text input (only shows when multiple selected) */}
             </div>
-            <div className="filter-row">
+            {/* Force year and survey periods to start on a new row safely given the auto-fill layout */}
+            <div className="filter-row" style={{ gridColumn: '1 / 2' }}>
               <label>Survey Year</label>
               <input type="text" value={summaryFilters.surveyYear} onChange={(e) => setSummaryFilters((f) => ({ ...f, surveyYear: e.target.value }))} placeholder="e.g. 2026" />
             </div>
@@ -1171,7 +1303,7 @@ const ExportData = () => {
         <div className="export-card export-card-bns">
           <h2>BNS Form (PDF)</h2>
           <p>Download printable BNS Form (PDF). Filter by barangay and purok/sitio to generate the form for specific areas.</p>
-          
+
           {/* BNS Form Filter Section */}
           <div className="bns-form-filters">
             <div className="filter-row">
@@ -1195,7 +1327,7 @@ const ExportData = () => {
               />
             </div>
           </div>
-          
+
           <button
             onClick={handleExportBnsPdf}
             className="export-btn primary"
@@ -1209,6 +1341,110 @@ const ExportData = () => {
         </div>
 
       </div>
+
+      {isPurokModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsPurokModalOpen(false)}>
+          <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '90%', maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#1e293b' }}>Select Purok / Block / Street</h3>
+              <button
+                type="button"
+                onClick={() => setIsPurokModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}
+              >
+                &times;
+              </button>
+            </div>
+            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#64748b' }}>Select multiple areas to combine their data. Leave empty or click "Clear All" to select all areas in the barangay.</p>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+              {summaryPurokOptions.filter(o => o.value !== '').map((opt) => {
+                const isSelected = summaryFilters.combinedPuroks.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        setSummaryFilters(f => ({ ...f, combinedPuroks: f.combinedPuroks.filter(p => p !== opt.value) }));
+                      } else {
+                        setSummaryFilters(f => ({ ...f, combinedPuroks: [...f.combinedPuroks, opt.value] }));
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '20px',
+                      border: isSelected ? '2px solid var(--color-primary)' : '1px solid #cbd5e1',
+                      background: isSelected ? 'var(--color-primary-light)' : '#f8fafc',
+                      color: isSelected ? 'var(--color-primary)' : '#475569',
+                      fontWeight: isSelected ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+              {summaryPurokOptions.length <= 1 && (
+                <div style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '14px' }}>Please select a Barangay first to see available puroks.</div>
+              )}
+            </div>
+
+            {summaryFilters.combinedPuroks.length > 1 && (
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Custom Display Name (Optional)</label>
+                <input
+                  type="text"
+                  value={summaryFilters.customPurokText || ''}
+                  onChange={(e) => setSummaryFilters(f => ({ ...f, customPurokText: e.target.value }))}
+                  placeholder="e.g. Purok 1 & 2"
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+                <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>This will be printed on the export header instead of listing all puroks.</p>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+              <button
+                type="button"
+                onClick={() => setSummaryFilters(f => ({ ...f, combinedPuroks: [], customPurokText: '' }))}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ef4444',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  borderRadius: '6px'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Clear Selection
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPurokModalOpen(false)}
+                style={{
+                  padding: '10px 24px',
+                  background: 'var(--color-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--color-primary)'}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -45,16 +45,11 @@ class HouseholdController extends Controller
             $query->where('barangay', $request->get('barangay'));
         }
 
-        // BNS filter (searches same fields as general search)
+        // BNS filter — search by barangay nutrition scholar name (member name)
         if ($request->has('bns') && trim((string) $request->get('bns')) !== '') {
             $bns = trim((string) $request->get('bns'));
-            $query->where(function ($q) use ($bns) {
-                $q->where('household_number', 'like', "%{$bns}%")
-                  ->orWhere('barangay', 'like', "%{$bns}%")
-                  ->orWhere('purok_sito', 'like', "%{$bns}%")
-                  ->orWhereHas('members', function ($mq) use ($bns) {
-                      $mq->where('name', 'like', "%{$bns}%");
-                  });
+            $query->whereHas('members', function ($mq) use ($bns) {
+                $mq->where('name', 'like', "%{$bns}%");
             });
         }
 
@@ -186,11 +181,13 @@ class HouseholdController extends Controller
         $request->validate([
             'household_number' => 'required|string|max:255',
             'barangay' => 'nullable|string|max:255',
+            'purok_sito' => 'nullable|string|max:255',
             'exclude_id' => 'nullable|integer|exists:households,id',
         ]);
 
         $query = Household::where('household_number', $request->household_number)
-            ->where('barangay', $request->get('barangay', ''));
+            ->where('barangay', $request->get('barangay', ''))
+            ->where('purok_sito', $request->get('purok_sito', ''));
 
         if ($request->has('exclude_id')) {
             $query->where('id', '!=', $request->exclude_id);
@@ -200,7 +197,7 @@ class HouseholdController extends Controller
 
         return response()->json([
             'duplicate' => $exists,
-            'message' => $exists ? 'A household with this HH No. already exists in this barangay.' : null,
+            'message' => $exists ? 'A household with this HH No. already exists in this barangay and purok/sitio.' : null,
         ]);
     }
 
@@ -280,14 +277,36 @@ class HouseholdController extends Controller
 
                         $validated = $validator->validated();
 
-                        // Check duplicate: same household_number + barangay
+                        // Check duplicate: same household_number + barangay + purok_sito
                         $barangay = $validated['barangay'] ?? '';
+                        $purokSito = $validated['purok_sito'] ?? '';
                         $existing = Household::where('household_number', $validated['household_number'])
                             ->where('barangay', $barangay)
+                            ->where('purok_sito', $purokSito)
                             ->first();
                         if ($existing) {
-                            $skipped++;
-                            $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}')";
+                            $forceUpdate = isset($householdData['force_update']) && $householdData['force_update'];
+                            if ($forceUpdate) {
+                                // Update existing household with new data
+                                $existing->update($validated);
+                                // Sync members: delete old, add new
+                                $existing->members()->delete();
+                                foreach ($members as $memberData) {
+                                    if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
+                                        $existing->members()->create([
+                                            'role'                   => $memberData['role'] ?? null,
+                                            'name'                   => $memberData['name'] ?? null,
+                                            'occupation'             => $memberData['occupation'] ?? null,
+                                            'educational_attainment' => $memberData['educational_attainment'] ?? null,
+                                            'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
+                                        ]);
+                                    }
+                                }
+                                $successful++;
+                            } else {
+                                $skipped++;
+                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}')";
+                            }
                             continue;
                         }
 
@@ -338,5 +357,134 @@ class HouseholdController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Preview which households are new, unchanged, or changed before a real import.
+     * POST /api/households/preview-import
+     */
+    public function previewImport(Request $request): JsonResponse
+    {
+        if (!$request->has('households') || !is_array($request->households)) {
+            return response()->json(['message' => 'No households data provided.'], 400);
+        }
+
+        $fieldLabels = [
+            'family_living_in_house'       => 'Family Living in House',
+            'number_of_members'            => 'Number of Members',
+            'nhts_household_group'         => 'NHTS Household Group',
+            'indigenous_group'             => 'Indigenous Group',
+            'newborn_male'                 => 'Newborn (Male)',
+            'newborn_female'               => 'Newborn (Female)',
+            'infant_male'                  => 'Infant (Male)',
+            'infant_female'                => 'Infant (Female)',
+            'under_five_male'              => 'Under 5 (Male)',
+            'under_five_female'            => 'Under 5 (Female)',
+            'children_male'               => 'Children (Male)',
+            'children_female'             => 'Children (Female)',
+            'adolescence_male'             => 'Adolescence (Male)',
+            'adolescence_female'           => 'Adolescence (Female)',
+            'pregnant'                     => 'Pregnant',
+            'adolescent_pregnant'          => 'Adolescent Pregnant',
+            'post_partum'                  => 'Post Partum',
+            'women_15_49_not_pregnant'     => 'Women 15-49 (Not Pregnant)',
+            'adult_male'                   => 'Adult (Male)',
+            'adult_female'                 => 'Adult (Female)',
+            'senior_citizen_male'          => 'Senior Citizen (Male)',
+            'senior_citizen_female'        => 'Senior Citizen (Female)',
+            'pwd_male'                     => 'PWD (Male)',
+            'pwd_female'                   => 'PWD (Female)',
+            'couple_practicing_family_planning' => 'Couple Practicing FP',
+            'toilet_type'                  => 'Toilet Type',
+            'water_source'                 => 'Water Source',
+            'food_production_activity'     => 'Food Production Activity',
+            'using_iodized_salt'           => 'Using Iodized Salt',
+            'using_iron_fortified_rice'    => 'Using Iron-Fortified Rice',
+        ];
+
+        $results = [];
+
+        foreach ($request->households as $index => $householdData) {
+            foreach (['household_number', 'purok_sito', 'barangay'] as $key) {
+                if (isset($householdData[$key])) {
+                    $householdData[$key] = trim((string) $householdData[$key]);
+                }
+            }
+
+            $hhNumber  = $householdData['household_number'] ?? '';
+            $barangay  = $householdData['barangay'] ?? '';
+            $purokSito = $householdData['purok_sito'] ?? '';
+
+            if (!$hhNumber) {
+                $results[] = ['status' => 'new', 'index' => $index];
+                continue;
+            }
+
+            $existing = Household::with('members')
+                ->where('household_number', $hhNumber)
+                ->where('barangay', $barangay)
+                ->where('purok_sito', $purokSito)
+                ->first();
+
+            if (!$existing) {
+                $results[] = ['status' => 'new', 'index' => $index];
+                continue;
+            }
+
+            // Compare fields
+            $diffs = [];
+            foreach ($fieldLabels as $field => $label) {
+                $newVal = $householdData[$field] ?? null;
+                $oldVal = $existing->$field;
+
+                // Normalize booleans and nulls for comparison
+                $oldNorm = is_bool($oldVal) ? ($oldVal ? 'Yes' : 'No') : (string)($oldVal ?? '');
+                $newNorm = is_bool($newVal) ? ($newVal ? 'Yes' : 'No') : (string)($newVal ?? '');
+
+                if ($oldNorm !== $newNorm) {
+                    $diffs[] = [
+                        'field'    => $field,
+                        'label'    => $label,
+                        'oldValue' => $oldVal,
+                        'newValue' => $newVal,
+                    ];
+                }
+            }
+
+            // Compare members (father, mother, caregiver names)
+            $incomingMembers = $householdData['members'] ?? [];
+            $existingMembers = $existing->members->keyBy('role');
+            foreach (['father', 'mother', 'caregiver'] as $role) {
+                $incomingMember = collect($incomingMembers)->firstWhere('role', $role);
+                $existingMember = $existingMembers->get($role);
+                $incomingName   = $incomingMember['name'] ?? '';
+                $existingName   = $existingMember ? ($existingMember->name ?? '') : '';
+                if (trim($incomingName) !== trim($existingName)) {
+                    $label = ucfirst($role) . ' Name';
+                    $diffs[] = [
+                        'field'    => $role . '_name',
+                        'label'    => $label,
+                        'oldValue' => $existingName ?: null,
+                        'newValue' => $incomingName ?: null,
+                    ];
+                }
+            }
+
+            if (empty($diffs)) {
+                $results[] = ['status' => 'unchanged', 'index' => $index];
+            } else {
+                $results[] = [
+                    'status'           => 'changed',
+                    'index'            => $index,
+                    'existingId'       => $existing->id,
+                    'household_number' => $hhNumber,
+                    'barangay'         => $barangay,
+                    'purok_sito'       => $purokSito,
+                    'diffs'            => $diffs,
+                ];
+            }
+        }
+
+        return response()->json(['preview' => $results]);
     }
 }

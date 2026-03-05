@@ -35,13 +35,8 @@
 }
 
 .downward-select-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
   max-height: 240px;
   overflow-y: auto;
-  z-index: 1200;
   background: var(--color-surface);
   border: 1px solid var(--color-border-neutral);
   border-radius: var(--radius);
