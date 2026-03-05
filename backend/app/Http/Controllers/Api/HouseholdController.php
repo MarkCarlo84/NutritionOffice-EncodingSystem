@@ -45,16 +45,11 @@ class HouseholdController extends Controller
             $query->where('barangay', $request->get('barangay'));
         }
 
-        // BNS filter (searches same fields as general search)
+        // BNS filter — search by barangay nutrition scholar name (member name)
         if ($request->has('bns') && trim((string) $request->get('bns')) !== '') {
             $bns = trim((string) $request->get('bns'));
-            $query->where(function ($q) use ($bns) {
-                $q->where('household_number', 'like', "%{$bns}%")
-                  ->orWhere('barangay', 'like', "%{$bns}%")
-                  ->orWhere('purok_sito', 'like', "%{$bns}%")
-                  ->orWhereHas('members', function ($mq) use ($bns) {
-                      $mq->where('name', 'like', "%{$bns}%");
-                  });
+            $query->whereHas('members', function ($mq) use ($bns) {
+                $mq->where('name', 'like', "%{$bns}%");
             });
         }
 

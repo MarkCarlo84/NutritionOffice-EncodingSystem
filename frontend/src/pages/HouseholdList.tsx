@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { getBnsOptions, resolveBnsForBarangay } from '../utils/bnsByBarangay';
+import { getBnsOptions } from '../utils/bnsByBarangay';
 import { MONTH_OPTIONS } from '../utils/surveySummary';
 import DownwardSelect from '../components/DownwardSelect';
 import './HouseholdList.css';
@@ -15,18 +15,29 @@ const BARANGAYS = [
   'Butong',
   'Casile',
   'Diezmo',
-  'Gulod',
-  'Mamatid',
-  'Marinig',
-  'Niugan',
-  'Pittland',
-  'Poblacion Dos',
-  'Poblacion Tres',
-  'Poblacion Uno',
+  'Pob. Dos',
+  'Pob. Tres',
+  'Pob. Uno',
   'Pulo',
   'Sala',
   'San Isidro',
 ];
+
+const PUROKS_BY_BARANGAY: Record<string, string[]> = {
+  'Baclaran': ['Sitio 1', 'Sitio 2', 'Sitio 3', 'Sitio 4', 'Sitio 5'],
+  'Banay-Banay': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5'],
+  'Banlic': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5'],
+  'Bigaa': ['Sitio 1', 'Sitio 2', 'Sitio 3', 'Sitio 4'],
+  'Butong': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'Casile': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'Diezmo': ['Sitio 1', 'Sitio 2', 'Sitio 3', 'Sitio 4'],
+  'Pulo': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'Sala': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'San Isidro': ['Sitio 1', 'Sitio 2', 'Sitio 3', 'Sitio 4'],
+  'Pob. Uno': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'Pob. Dos': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+  'Pob. Tres': ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4'],
+};
 
 interface FilterValues {
   bns: string;
@@ -96,7 +107,8 @@ const HouseholdList = () => {
     setFilter((f) => ({
       ...f,
       barangay,
-      bns: barangay === 'All Barangays' ? '' : resolveBnsForBarangay(barangay, f.bns),
+      bns: '',
+      purok: '',  // reset purok when barangay changes
     }));
   };
 
@@ -145,6 +157,12 @@ const HouseholdList = () => {
   useEffect(() => {
     fetchList(page, search, filter);
   }, [page]);
+
+  // Lock body scroll when filter modal is open
+  useEffect(() => {
+    document.body.style.overflow = filterModalOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [filterModalOpen]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -272,12 +290,14 @@ const HouseholdList = () => {
                 </div>
                 <div className="filter-field">
                   <label htmlFor="filter-purok">Purok / Block / Street</label>
-                  <input
+                  <DownwardSelect
                     id="filter-purok"
-                    type="text"
-                    placeholder="Optional"
-                    value={filter.purok}
-                    onChange={(e) => setFilter((f) => ({ ...f, purok: e.target.value }))}
+                    value={filter.purok || 'All'}
+                    onChange={(val) => setFilter((f) => ({ ...f, purok: val === 'All' ? '' : val }))}
+                    options={[
+                      { value: 'All', label: 'All Puroks' },
+                      ...(PUROKS_BY_BARANGAY[filter.barangay] ?? []).map((p) => ({ value: p, label: p })),
+                    ]}
                   />
                 </div>
                 <div className="filter-field">

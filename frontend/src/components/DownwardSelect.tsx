@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import './DownwardSelect.css';
 
 export interface DownwardSelectOption {
@@ -16,12 +16,26 @@ interface DownwardSelectProps {
 
 const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChange }: DownwardSelectProps) => {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const selectedLabel = useMemo(() => {
     const selected = options.find((opt) => opt.value === value);
     return selected?.label || placeholder;
   }, [options, placeholder, value]);
+
+  // Recalculate menu position whenever dropdown opens so it escapes overflow:hidden parents
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+    const rect = rootRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    });
+  }, [open]);
 
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
@@ -49,7 +63,7 @@ const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChang
       </button>
 
       {open && (
-        <div className="downward-select-menu" role="listbox">
+        <div className="downward-select-menu" role="listbox" style={menuStyle}>
           {options.map((opt) => (
             <button
               key={opt.value || '__empty__'}
