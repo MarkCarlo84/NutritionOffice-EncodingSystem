@@ -740,3 +740,32 @@
     gap: 4px;
   }
 }
+
+/* ── Error Theme for Duplicate Modal ───────────────────────────────── */
+
+.change-modal-header.error-theme {
+  background-color: var(--color-error-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.change-modal-header.error-theme h3 {
+  color: var(--color-error-text);
+}
+
+.change-modal-header.error-theme .change-modal-subtitle {
+  color: var(--color-error-text);
+  opacity: 0.8;
+}
+
+.change-confirm-btn.error-btn {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
+.change-confirm-btn.error-btn:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.duplicate-modal {
+  border: 2px solid var(--color-border);
+}

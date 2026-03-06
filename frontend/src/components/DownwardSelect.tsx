@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './DownwardSelect.css';
 
 export interface DownwardSelectOption {
@@ -16,16 +17,16 @@ interface DownwardSelectProps {
 
 const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChange }: DownwardSelectProps) => {
   const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({ opacity: 0, pointerEvents: 'none' });
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedLabel = useMemo(() => {
     const selected = options.find((opt) => opt.value === value);
     return selected?.label || placeholder;
   }, [options, placeholder, value]);
 
-  // Recalculate menu position whenever dropdown opens so it escapes overflow:hidden parents
-  useLayoutEffect(() => {
+  const updatePosition = () => {
     if (!open || !rootRef.current) return;
     const rect = rootRef.current.getBoundingClientRect();
     setMenuStyle({
@@ -34,13 +35,37 @@ const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChang
       left: rect.left,
       width: rect.width,
       zIndex: 9999,
+      opacity: 1,
+      pointerEvents: 'auto',
     });
+  };
+
+  useLayoutEffect(() => {
+    if (open) {
+      updatePosition();
+    } else {
+      setMenuStyle({ opacity: 0, pointerEvents: 'none' });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [open]);
 
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
       if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const isInsideRoot = rootRef.current?.contains(target);
+      const isInsideMenu = menuRef.current?.contains(target);
+
+      if (!isInsideRoot && !isInsideMenu) {
         setOpen(false);
       }
     };
@@ -62,8 +87,8 @@ const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChang
         <span className={`downward-select-caret ${open ? 'open' : ''}`}>▼</span>
       </button>
 
-      {open && (
-        <div className="downward-select-menu" role="listbox" style={menuStyle}>
+      {open && createPortal(
+        <div className="downward-select-menu" role="listbox" style={menuStyle} ref={menuRef}>
           {options.map((opt) => (
             <button
               key={opt.value || '__empty__'}
@@ -77,7 +102,8 @@ const DownwardSelect = ({ id, value, options, placeholder = 'Select...', onChang
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

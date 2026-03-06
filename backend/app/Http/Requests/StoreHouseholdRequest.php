@@ -35,10 +35,12 @@ class StoreHouseholdRequest extends FormRequest
                 'string',
                 'max:255',
                 Rule::unique('households')->where(function ($query) {
-                    return $query->where('barangay', $this->input('barangay'));
+                    return $query->where('barangay', $this->input('barangay'))
+                                 ->where('purok_sito', $this->input('purok_sito'))
+                                 ->where('family_living_in_house', $this->input('family_living_in_house'));
                 }),
             ],
-            'family_living_in_house' => ['nullable', 'integer', 'min:0'],
+            'family_living_in_house' => ['nullable', 'string', 'max:255'],
             'number_of_members' => ['nullable', 'integer', 'min:0'],
             'nhts_household_group' => ['nullable', 'integer', Rule::in([1, 2, 3])], // 1-NHTS 4Ps, 2-NHTS Non-4Ps, 3-Non-NHTS
             'indigenous_group' => ['nullable', 'integer', Rule::in([1, 2])], // 1-IP, 2-Non-IP

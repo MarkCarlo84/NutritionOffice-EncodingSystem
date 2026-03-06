@@ -187,7 +187,8 @@ class HouseholdController extends Controller
 
         $query = Household::where('household_number', $request->household_number)
             ->where('barangay', $request->get('barangay', ''))
-            ->where('purok_sito', $request->get('purok_sito', ''));
+            ->where('purok_sito', $request->get('purok_sito', ''))
+            ->where('family_living_in_house', $request->get('family_living_in_house', ''));
 
         if ($request->has('exclude_id')) {
             $query->where('id', '!=', $request->exclude_id);
@@ -237,7 +238,7 @@ class HouseholdController extends Controller
                             'barangay' => 'required|string|max:255',
                             'municipality_city' => 'nullable|string|max:255',
                             'province' => 'nullable|string|max:255',
-                            'family_living_in_house' => 'nullable|integer|min:0',
+                            'family_living_in_house' => 'nullable|string|max:255',
                             'number_of_members' => 'nullable|integer|min:0',
                             'nhts_household_group' => 'nullable|string|max:255',
                             'indigenous_group' => 'nullable|string|max:255',
@@ -283,6 +284,7 @@ class HouseholdController extends Controller
                         $existing = Household::where('household_number', $validated['household_number'])
                             ->where('barangay', $barangay)
                             ->where('purok_sito', $purokSito)
+                            ->where('family_living_in_house', $validated['family_living_in_house'] ?? '')
                             ->first();
                         if ($existing) {
                             $forceUpdate = isset($householdData['force_update']) && $householdData['force_update'];
@@ -305,7 +307,7 @@ class HouseholdController extends Controller
                                 $successful++;
                             } else {
                                 $skipped++;
-                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}')";
+                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}', Family '{$validated['family_living_in_house']}')";
                             }
                             continue;
                         }
@@ -424,6 +426,7 @@ class HouseholdController extends Controller
                 ->where('household_number', $hhNumber)
                 ->where('barangay', $barangay)
                 ->where('purok_sito', $purokSito)
+                ->where('family_living_in_house', (string)($householdData['family_living_in_house'] ?? ''))
                 ->first();
 
             if (!$existing) {
@@ -477,10 +480,11 @@ class HouseholdController extends Controller
                     'status'           => 'changed',
                     'index'            => $index,
                     'existingId'       => $existing->id,
-                    'household_number' => $hhNumber,
-                    'barangay'         => $barangay,
-                    'purok_sito'       => $purokSito,
-                    'diffs'            => $diffs,
+                    'household_number'       => $hhNumber,
+                    'barangay'               => $barangay,
+                    'purok_sito'             => $purokSito,
+                    'family_living_in_house' => $householdData['family_living_in_house'] ?? '',
+                    'diffs'                  => $diffs,
                 ];
             }
         }

@@ -37,10 +37,12 @@ class UpdateHouseholdRequest extends FormRequest
                 'string',
                 'max:255',
                 Rule::unique('households')->where(function ($query) {
-                    return $query->where('barangay', $this->input('barangay'));
+                    return $query->where('barangay', $this->input('barangay'))
+                                 ->where('purok_sito', $this->input('purok_sito'))
+                                 ->where('family_living_in_house', $this->input('family_living_in_house'));
                 })->ignore($householdId),
             ],
-            'family_living_in_house' => ['nullable', 'integer', 'min:0'],
+            'family_living_in_house' => ['nullable', 'string', 'max:255'],
             'number_of_members' => ['nullable', 'integer', 'min:0'],
             'nhts_household_group' => ['nullable', 'integer', Rule::in([1, 2, 3])],
             'indigenous_group' => ['nullable', 'integer', Rule::in([1, 2])],
