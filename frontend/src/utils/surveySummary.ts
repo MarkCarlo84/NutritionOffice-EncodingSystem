@@ -29,6 +29,18 @@ export const BARANGAY_DISPLAY: Record<string, string> = {
   'Poblacion Tres': 'Pob. Tres',
 };
 
+export const OCC_LABELS = [
+  '1_Manager', '2_Professional', '3_Technician & Associate Professionals', '4_Clerical Support Workers',
+  '5_Service & Sales Workers', '6_Skilled agricultural, forestry & fishery workers', '7_Craft & related trade workers',
+  '8_Plant & machine operators & assemblers', '9_Elementary occupations', '10_Armed Forces Occupations', '11_None',
+];
+
+export const ED_LABELS = [
+  'N_None', 'EU_Elem undergraduate', 'EG_Elem graduate', 'HU_High school undergraduate',
+  'HG_High school graduate', 'CU_College undergraduate', 'CG_College graduate',
+  'V_Vocational', 'PG_Post graduate studies'
+];
+
 /** Month-only options for Survey Period (From/To). Value is "01"-"12". */
 export const MONTH_OPTIONS: { value: string; label: string }[] = [
   { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import ExcelJS from 'exceljs';
 import api from '../lib/api';
 import { buildBnsFormHeader, applyBnsColumnWidths } from '../utils/bnsFormTemplate';
-import { BARANGAYS, BARANGAY_DISPLAY } from '../utils/surveySummary';
+import { BARANGAYS, BARANGAY_DISPLAY, emptySummary } from '../utils/surveySummary';
+import { buildSummaryWorksheet } from '../utils/summaryExcel';
+import { resolveBnsForBarangay } from '../utils/bnsByBarangay';
 import DownwardSelect from '../components/DownwardSelect';
 import './ImportData.css';
 
@@ -41,6 +43,10 @@ const ImportData = () => {
   const [showChangeModal, setShowChangeModal] = useState(false);
   const [changedHouseholds, setChangedHouseholds] = useState<ChangedHousehold[]>([]);
   const [selectedForUpdate, setSelectedForUpdate] = useState<Set<number>>(new Set());
+
+  // Duplicate error state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateList, setDuplicateList] = useState<{ name: string; locations: string }[]>([]);
   const [parsedHouseholds, setParsedHouseholds] = useState<any[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,7 +161,7 @@ const ImportData = () => {
       if (headerMunicipalityCity) rowData.municipality_city = headerMunicipalityCity;
       if (headerProvince) rowData.province = headerProvince;
 
-      const familyLiving = getNum(row1, 2);
+      const familyLiving = get(row1, 2);
       if (familyLiving !== undefined) rowData.family_living_in_house = familyLiving;
       const numMembers = getNum(row1, 3);
       if (numMembers !== undefined) rowData.number_of_members = numMembers;
@@ -244,7 +250,7 @@ const ImportData = () => {
 
       const familyLiving = row.getCell(2).value;
       if (familyLiving !== null && familyLiving !== undefined && familyLiving !== '') {
-        rowData.family_living_in_house = typeof familyLiving === 'number' ? familyLiving : parseInt(String(familyLiving)) || 0;
+        rowData.family_living_in_house = String(familyLiving).trim();
         hasData = true;
       }
       const numberOfMembers = row.getCell(3).value;
@@ -400,6 +406,45 @@ const ImportData = () => {
         throw new Error('No data found in the file. Please check the file format.');
       }
 
+      // Check for duplicate names across all households in the file and track their locations
+      const nameLocations = new Map<string, string[]>();
+      const ignoreNames = ['', '(Fa)', '(Mo)', '(Ca)'];
+
+      households.forEach((hh) => {
+        const hhNum = hh.household_number || 'Unknown';
+        const familyId = hh.family_living_in_house || 'N/A';
+        const locationStr = `HH #${hhNum} (Family ${familyId})`;
+
+        (hh.members || []).forEach((m: any) => {
+          const name = (m.name || '').trim();
+          if (name && !ignoreNames.includes(name)) {
+            const lowerName = name.toLowerCase();
+            const locations = nameLocations.get(lowerName) || [];
+            locations.push(`${name} at ${locationStr}`);
+            nameLocations.set(lowerName, locations);
+          }
+        });
+      });
+
+      const duplicateErrors: { name: string; locations: string }[] = [];
+      nameLocations.forEach((locations, lowerName) => {
+        if (locations.length > 1) {
+          const uniqueFullNames = Array.from(new Set(locations.map(loc => loc.split(' at ')[0])));
+          const locationDetails = locations.map(loc => loc.split(' at ')[1]).join(', ');
+          duplicateErrors.push({
+            name: uniqueFullNames.join('/'),
+            locations: locationDetails
+          });
+        }
+      });
+
+      if (duplicateErrors.length > 0) {
+        setDuplicateList(duplicateErrors);
+        setShowDuplicateModal(true);
+        setImporting(false);
+        return;
+      }
+
       // ── PHASE 1: Preview — detect changed households ──────────────────────
       const previewResponse = await api.post('/households/preview-import', {
         households,
@@ -538,7 +583,6 @@ const ImportData = () => {
       const row = worksheet.addRow([]);
       for (let c = 1; c <= 34; c++) {
         if (c === 26) row.getCell(c).value = label;
-        else row.getCell(c).value = '';
         row.getCell(c).border = thinBorder;
         row.getCell(c).alignment = { horizontal: c === 26 ? 'left' : 'center', vertical: 'middle' };
       }
@@ -583,8 +627,7 @@ const ImportData = () => {
     };
 
     for (const row of blockStartRows) {
-      // B, C, and age/risk count fields (all must be whole numbers >= 0)
-      setWholeNonNegativeValidation(row, 2);
+      // C, and age/risk count fields (all must be whole numbers >= 0)
       setWholeNonNegativeValidation(row, 3);
       for (let c = 6; c <= 25; c++) setWholeNonNegativeValidation(row, c);
 
@@ -605,7 +648,37 @@ const ImportData = () => {
       setListValidation(row, 28, 'N,EU,EG,HU,HG,CU,CG,V,PG'); // Educational attainment
     }
 
+    // Add conditional formatting for duplicate names in Fa, Mo, Ca across any household
+    // This rule ignores empty default labels (Fa), (Mo), (Ca) and catches duplicates anywhere in Z11:Z34.
+    // Using a light red background with dark red text for better visibility and compatibility.
+    worksheet.addConditionalFormatting({
+      ref: 'Z11:Z34',
+      rules: [
+        {
+          priority: 1,
+          type: 'expression',
+          formulae: [
+            `AND(TRIM(Z11)<>"", TRIM(Z11)<>"(Fa)", TRIM(Z11)<>"(Mo)", TRIM(Z11)<>"(Ca)", COUNTIF($Z$11:$Z$34, Z11)>1)`
+          ],
+          style: {
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }, // Light Red
+            font: { color: { argb: 'FF9C0006' }, bold: true } // Dark Red
+          },
+        }
+      ]
+    });
+
     applyBnsColumnWidths(worksheet);
+
+    // --- Tab 2: Family Profile Survey Summary ---
+    const summaryWorksheet = workbook.addWorksheet('Family Profile Survey Summary');
+    const summaryData = emptySummary();
+    const bnsName = resolveBnsForBarangay(templateBarangay, '');
+    summaryData.basic.bns = bnsName;
+    summaryData.basic.barangay = BARANGAY_DISPLAY[templateBarangay] || templateBarangay;
+    summaryData.basic.purokBlockStreet = ''; // Leave blank for user to fill
+
+    buildSummaryWorksheet(summaryWorksheet, summaryData, true);
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -994,6 +1067,58 @@ const ImportData = () => {
                 disabled={selectedForUpdate.size === 0}
               >
                 Confirm Update ({selectedForUpdate.size} household{selectedForUpdate.size !== 1 ? 's' : ''})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Duplicate Name Modal ────────────────────────────────────── */}
+      {showDuplicateModal && (
+        <div className="change-modal-overlay" onClick={() => setShowDuplicateModal(false)}>
+          <div className="change-modal duplicate-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="change-modal-header error-theme">
+              <div>
+                <h3>Duplicates Detected</h3>
+                <p className="change-modal-subtitle">
+                  The file contains duplicate names for Father, Mother, or Caregiver. 
+                  Please correct these in your Excel file before importing.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="abbr-modal-close"
+                onClick={() => setShowDuplicateModal(false)}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="change-modal-body">
+              <table className="change-diff-table">
+                <thead>
+                  <tr>
+                    <th>Duplicated Name</th>
+                    <th>Locations Found (HH # & Family)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {duplicateList.map((dup, idx) => (
+                    <tr key={idx}>
+                      <td className="diff-field-label">{dup.name}</td>
+                      <td className="diff-old">{dup.locations}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="change-modal-footer">
+              <button
+                type="button"
+                className="change-confirm-btn error-btn"
+                onClick={() => setShowDuplicateModal(false)}
+              >
+                Close and Fix File
               </button>
             </div>
           </div>
