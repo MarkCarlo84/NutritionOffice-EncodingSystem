@@ -522,3 +522,36 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Family Tabs ─────────────────────────────────────────────────────── */
+.vh-family-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.vh-family-tab {
+  padding: 10px 20px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-neutral);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.vh-family-tab:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.vh-family-tab.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}

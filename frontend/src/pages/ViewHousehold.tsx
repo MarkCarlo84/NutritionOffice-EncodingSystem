@@ -49,6 +49,7 @@ interface Household {
   using_iodized_salt: boolean | null;
   using_iron_fortified_rice: boolean | null;
   members: HouseholdMember[];
+  related_families?: Household[];
   [key: string]: any;
 }
 
@@ -146,11 +147,26 @@ const ViewHousehold = () => {
   const [household, setHousehold] = useState<Household | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [allFamilies, setAllFamilies] = useState<Household[]>([]);
+  const [activeFamilyIndex, setActiveFamilyIndex] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     api.get(`/households/${id}`)
-      .then(({ data }) => setHousehold(data))
+      .then(({ data }) => {
+        const related = data.related_families || [];
+        const combined = [data, ...related];
+        combined.sort((a, b) => {
+          const aVal = String(a.family_living_in_house || '');
+          const bVal = String(b.family_living_in_house || '');
+          return aVal.localeCompare(bVal);
+        });
+        
+        setAllFamilies(combined);
+        const idx = combined.findIndex(h => String(h.id) === id);
+        setActiveFamilyIndex(idx >= 0 ? idx : 0);
+        setHousehold(combined[idx >= 0 ? idx : 0]);
+      })
       .catch(() => setError('Household not found.'))
       .finally(() => setLoading(false));
   }, [id]);
@@ -233,6 +249,23 @@ const ViewHousehold = () => {
           </div>
         </div>
       </div>
+
+      {allFamilies.length > 1 && (
+        <div className="vh-family-tabs">
+          {allFamilies.map((fam, idx) => (
+            <button
+              key={fam.id}
+              className={`vh-family-tab ${idx === activeFamilyIndex ? 'active' : ''}`}
+              onClick={() => {
+                setActiveFamilyIndex(idx);
+                setHousehold(allFamilies[idx]);
+              }}
+            >
+              Family {fam.family_living_in_house || '—'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Action buttons ── */}
       <div className="vh-actions">

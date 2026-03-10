@@ -19,6 +19,7 @@ interface ChangedHousehold {
   index: number;
   existingId: number;
   household_number: string;
+  family_living_in_house?: string | number;
   barangay: string;
   purok_sito: string;
   diffs: FieldDiff[];
@@ -427,7 +428,7 @@ const ImportData = () => {
       });
 
       const duplicateErrors: { name: string; locations: string }[] = [];
-      nameLocations.forEach((locations, lowerName) => {
+      nameLocations.forEach((locations) => {
         if (locations.length > 1) {
           const uniqueFullNames = Array.from(new Set(locations.map(loc => loc.split(' at ')[0])));
           const locationDetails = locations.map(loc => loc.split(' at ')[1]).join(', ');
@@ -457,6 +458,7 @@ const ImportData = () => {
           index: p.index,
           existingId: p.existingId,
           household_number: p.household_number,
+          family_living_in_house: p.family_living_in_house,
           barangay: p.barangay,
           purok_sito: p.purok_sito,
           diffs: p.diffs,
@@ -578,7 +580,7 @@ const ImportData = () => {
       province: 'Laguna',
     });
 
-    // Rows 11+: Sample data blocks (Fa), (Mo), (Ca) - 8 blocks of 3 rows each
+    // Rows 11+: Sample data blocks (Fa), (Mo), (Ca) - 500 blocks of 3 rows each
     const addDataRow = (label: string) => {
       const row = worksheet.addRow([]);
       for (let c = 1; c <= 34; c++) {
@@ -588,13 +590,13 @@ const ImportData = () => {
       }
       return row;
     };
-    for (let block = 0; block < 8; block++) {
+    for (let block = 0; block < 500; block++) {
       addDataRow('(Fa)');
       addDataRow('(Mo)');
       addDataRow('(Ca)');
     }
-    // Merges for each 3-row block (rows 11-13, 14-16, ..., 32-34)
-    for (let block = 0; block < 8; block++) {
+    // Merges for each 3-row block
+    for (let block = 0; block < 500; block++) {
       const startRow = 11 + block * 3;
       const endRow = startRow + 2;
       worksheet.mergeCells(startRow, 1, endRow, 1);
@@ -604,8 +606,8 @@ const ImportData = () => {
 
     // Add validation rules for template rows.
     // Note: merged columns are validated on the top row of each 3-row household block.
-    const blockStartRows = Array.from({ length: 8 }, (_, i) => 11 + i * 3);
-    const allDetailRows = Array.from({ length: 24 }, (_, i) => 11 + i);
+    const blockStartRows = Array.from({ length: 500 }, (_, i) => 11 + i * 3);
+    const allDetailRows = Array.from({ length: 1500 }, (_, i) => 11 + i);
 
     const setListValidation = (row: number, col: number, csvOptions: string) => {
       worksheet.getCell(row, col).dataValidation = {
@@ -649,16 +651,16 @@ const ImportData = () => {
     }
 
     // Add conditional formatting for duplicate names in Fa, Mo, Ca across any household
-    // This rule ignores empty default labels (Fa), (Mo), (Ca) and catches duplicates anywhere in Z11:Z34.
+    // This rule ignores empty default labels (Fa), (Mo), (Ca) and catches duplicates anywhere in Z11:Z1510.
     // Using a light red background with dark red text for better visibility and compatibility.
     worksheet.addConditionalFormatting({
-      ref: 'Z11:Z34',
+      ref: 'Z11:Z1510',
       rules: [
         {
           priority: 1,
           type: 'expression',
           formulae: [
-            `AND(TRIM(Z11)<>"", TRIM(Z11)<>"(Fa)", TRIM(Z11)<>"(Mo)", TRIM(Z11)<>"(Ca)", COUNTIF($Z$11:$Z$34, Z11)>1)`
+            `AND(TRIM(Z11)<>"", TRIM(Z11)<>"(Fa)", TRIM(Z11)<>"(Mo)", TRIM(Z11)<>"(Ca)", COUNTIF($Z$11:$Z$1510, Z11)>1)`
           ],
           style: {
             fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }, // Light Red
@@ -1022,6 +1024,7 @@ const ImportData = () => {
                       />
                       <span className="change-hh-title">
                         Household No. <strong>{ch.household_number}</strong>
+                        {ch.family_living_in_house ? ` (Family ${ch.family_living_in_house})` : ''}
                       </span>
                     </label>
                     <span className="change-hh-location">

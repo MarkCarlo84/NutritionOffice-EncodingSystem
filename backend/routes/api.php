@@ -18,6 +18,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('user', [AuthController::class, 'user']);
 
+    // Analytics / Summaries
+    Route::get('households/options', [HouseholdController::class, 'options']);
+    Route::get('households/dashboard-stats', [HouseholdController::class, 'dashboardStats']);
+    Route::post('households/barangay-summary', [HouseholdController::class, 'barangaySummary']);
+
     // Check duplicate household (HH No. + barangay) - must be before apiResource so "check-duplicate" is not treated as id
     Route::get('households/check-duplicate', [HouseholdController::class, 'checkDuplicate']);
     // Preview import: compare incoming data with existing records - must be before apiResource
@@ -25,3 +30,4 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('households', HouseholdController::class);
     Route::post('households/import', [HouseholdController::class, 'import']);
 });
+

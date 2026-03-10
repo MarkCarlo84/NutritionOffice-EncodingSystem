@@ -111,11 +111,20 @@ export function emptySummary(): SurveySummary {
 export function aggregateSummary(households: any[]): SurveySummary {
   const s = emptySummary();
   const puroks = new Set<string>();
+  const hhNumbers = new Set<string>();
+  let emptyHhCount = 0;
 
   for (const h of households) {
     const n = Number(h.number_of_members) || 0;
-    const fam = Number(h.family_living_in_house) || 1;
-    s.totals.households += 1;
+    // Always count as 1 family per row as requested, ignoring inputs like "1A, 1B" representing 2 overall but spread
+    const fam = 1;
+
+    if (h.household_number) {
+      hhNumbers.add(String(h.household_number).trim());
+    } else {
+      emptyHhCount++;
+    }
+    
     s.totals.families += fam;
     if (h.purok_sito) puroks.add(String(h.purok_sito).trim());
     s.totals.population += n;
@@ -174,6 +183,7 @@ export function aggregateSummary(households: any[]): SurveySummary {
     }
   }
 
+  s.totals.households = hhNumbers.size + emptyHhCount;
   s.totals.purokBlockStreet = puroks.size;
   return s;
 }

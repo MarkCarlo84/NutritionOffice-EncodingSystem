@@ -1,0 +1,1 @@
+<?php require 'vendor/autoload.php'; \ = require_once 'bootstrap/app.php'; \->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); try { (new Database\Seeders\LargeDummyDataSeeder)->run(); } catch (\Throwable \) { file_put_contents('storage/logs/error.json', json_encode(['msg' => \->getMessage(), 'line' => \->getLine()])); echo 'ERROR CAUGHT'; }

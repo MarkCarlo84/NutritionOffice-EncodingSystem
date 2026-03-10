@@ -58,8 +58,8 @@ export function buildSummaryWorksheet(
     ws.addRow([]); // Blank row 8
 
     const leftCol: [string, any][] = [
-        ['Total No. of Households', useFormulas ? { formula: `COUNTIF(${householdRef}!A${rStart}:A${rEnd}, "<>")` } : s.totals.households],
-        ['Total No. of Families', useFormulas ? { formula: `SUM(${householdRef}!B${rStart}:B${rEnd})` } : s.totals.families],
+        ['Total No. of Households', useFormulas ? { formula: `SUMPRODUCT((${householdRef}!A${rStart}:A${rEnd}<>"")/COUNTIF(${householdRef}!A${rStart}:A${rEnd}, ${householdRef}!A${rStart}:A${rEnd}&""))` } : s.totals.households],
+        ['Total No. of Families', useFormulas ? { formula: `COUNTIF(${householdRef}!A${rStart}:A${rEnd}, "<>")` } : s.totals.families],
         ['Family Size:', ''],
         ['     more than 10', useFormulas ? { formula: `COUNTIF(${householdRef}!C${rStart}:C${rEnd}, ">10")` } : s.familySize.moreThan10],
         ['     8 - 10', useFormulas ? { formula: `COUNTIFS(${householdRef}!C${rStart}:C${rEnd}, ">=8", ${householdRef}!C${rStart}:C${rEnd}, "<=10")` } : s.familySize.n8to10],
