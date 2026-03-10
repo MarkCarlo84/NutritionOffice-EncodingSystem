@@ -102,14 +102,22 @@ class HouseholdController extends Controller
         ], 201);
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(string $id): JsonResponse
     {
         $household = Household::with('members')->findOrFail($id);
 
-        return response()->json($household);
+        $relatedFamilies = Household::with('members')
+            ->where('household_number', $household->household_number)
+            ->where('barangay', $household->barangay)
+            ->where('purok_sito', $household->purok_sito)
+            ->where('id', '!=', $household->id)
+            ->orderBy('family_living_in_house')
+            ->get();
+
+        $data = $household->toArray();
+        $data['related_families'] = $relatedFamilies;
+
+        return response()->json($data);
     }
 
     /**
@@ -490,5 +498,284 @@ class HouseholdController extends Controller
         }
 
         return response()->json(['preview' => $results]);
+    }
+
+    public function options(Request $request): JsonResponse
+    {
+        $years = \Illuminate\Support\Facades\DB::table('households')
+            ->selectRaw("DISTINCT strftime('%Y', created_at) as year")
+            ->whereNotNull('created_at')
+            ->orderBy('year', 'desc')
+            ->pluck('year')
+            ->map(fn($y) => (string) $y)
+            ->toArray();
+
+        $puroks = \Illuminate\Support\Facades\DB::table('households')
+            ->select('barangay', 'purok_sito')
+            ->whereNotNull('purok_sito')
+            ->where('purok_sito', '!=', '')
+            ->distinct()
+            ->get()
+            ->groupBy('barangay')
+            ->map(function ($items) {
+                return $items->pluck('purok_sito')->sort()->values()->toArray();
+            });
+
+        return response()->json([
+            'years' => empty($years) ? [date('Y')] : $years,
+            'puroks' => $puroks
+        ]);
+    }
+
+    public function dashboardStats(Request $request): JsonResponse
+    {
+        $allBarangays = [
+            'Baclaran', 'Banay-Banay', 'Banlic', 'Bigaa', 'Butong', 'Casile',
+            'Diezmo', 'Gulod', 'Mamatid', 'Marinig', 'Masiit', 'Niugan', 'Pittland',
+            'Pulo', 'Sala', 'San Isidro', 'Pob. Uno', 'Pob. Dos', 'Pob. Tres'
+        ];
+
+        // 1. Total Encoded (Distinct households by barangay + purok + hh number)
+        $totalEncoded = \Illuminate\Support\Facades\DB::table('households')
+            ->selectRaw("COUNT(DISTINCT barangay || '-' || purok_sito || '-' || household_number) as total")
+            ->value('total');
+
+        // 2. Barangays Covered
+        $barangaysCovered = \Illuminate\Support\Facades\DB::table('households')
+            ->selectRaw('COUNT(DISTINCT barangay) as total')
+            ->value('total');
+
+        // 3. Demographics Sum
+        $totals = \Illuminate\Support\Facades\DB::table('households')->selectRaw('
+            SUM(COALESCE(newborn_male,0) + COALESCE(infant_male,0) + COALESCE(under_five_male,0) + COALESCE(children_male,0) + COALESCE(adolescence_male,0) + COALESCE(adult_male,0) + COALESCE(senior_citizen_male,0) + COALESCE(pwd_male,0)) as maleCount,
+            SUM(COALESCE(newborn_female,0) + COALESCE(infant_female,0) + COALESCE(under_five_female,0) + COALESCE(children_female,0) + COALESCE(adolescence_female,0) + COALESCE(adult_female,0) + COALESCE(senior_citizen_female,0) + COALESCE(pwd_female,0)) as femaleCount,
+            MAX(updated_at) as lastUpdate
+        ')->first();
+
+        // 4. Barangay Distribution
+        $barangayCountsRaw = \Illuminate\Support\Facades\DB::table('households')
+            ->selectRaw("barangay, COUNT(DISTINCT purok_sito || '-' || household_number) as count")
+            ->groupBy('barangay')
+            ->get()
+            ->keyBy('barangay');
+
+        $barangayDataArray = [];
+        // Map database string variants to standard dashboard UI variants
+        $aliasMap = [
+            'Baclaran' => ['Baclaran', 'Bañadero'],
+            'Pob. Uno' => ['Pob. Uno', 'Poblacion Uno'],
+            'Pob. Dos' => ['Pob. Dos', 'Poblacion Dos'],
+            'Pob. Tres' => ['Pob. Tres', 'Poblacion Tres']
+        ];
+
+        foreach ($allBarangays as $b) {
+            $count = 0;
+            if (isset($aliasMap[$b])) {
+                foreach ($aliasMap[$b] as $dbName) {
+                    $count += isset($barangayCountsRaw[$dbName]) ? $barangayCountsRaw[$dbName]->count : 0;
+                }
+            } else {
+                $count = isset($barangayCountsRaw[$b]) ? $barangayCountsRaw[$b]->count : 0;
+            }
+
+            $barangayDataArray[] = [
+                'barangay' => $b,
+                'count' => $count,
+                'displayName' => $b
+            ];
+        }
+
+        return response()->json([
+            'stats' => [
+                'totalEncoded' => (int) $totalEncoded,
+                'barangaysCovered' => (int) $barangaysCovered,
+                'maleCount' => (int) ($totals->maleCount ?? 0),
+                'femaleCount' => (int) ($totals->femaleCount ?? 0),
+                'lastUpdate' => $totals->lastUpdate ? date('m/d/y', strtotime($totals->lastUpdate)) : '—'
+            ],
+            'barangayData' => $barangayDataArray
+        ]);
+    }
+
+    public function barangaySummary(Request $request): JsonResponse
+    {
+        $query = \Illuminate\Support\Facades\DB::table('households');
+
+        if ($request->has('barangay') && trim((string)$request->get('barangay')) !== '') {
+            $query->where('barangay', $request->get('barangay'));
+        }
+        if ($request->has('purokBlockStreet') && trim((string)$request->get('purokBlockStreet')) !== '') {
+            $query->where('purok_sito', $request->get('purokBlockStreet'));
+        }
+        if ($request->has('surveyYear') && is_numeric($request->get('surveyYear'))) {
+            $query->whereYear('created_at', (int)$request->get('surveyYear'));
+        }
+        if ($request->has('surveyPeriodFrom') && $request->get('surveyPeriodFrom')) {
+            $year = $request->get('surveyYear', date('Y'));
+            $query->whereDate('created_at', '>=', "$year-" . str_pad($request->get('surveyPeriodFrom'), 2, '0', STR_PAD_LEFT) . "-01");
+        }
+        if ($request->has('surveyPeriodTo') && $request->get('surveyPeriodTo')) {
+            $year = $request->get('surveyYear', date('Y'));
+            $endOfMonth = date('Y-m-t', strtotime("$year-" . str_pad($request->get('surveyPeriodTo'), 2, '0', STR_PAD_LEFT) . "-01"));
+            $query->whereDate('created_at', '<=', $endOfMonth);
+        }
+
+        // 1. Get totals and health/age metrics
+        $totals = clone $query;
+        $stats = $totals->selectRaw("
+            COUNT(DISTINCT barangay || '-' || purok_sito || '-' || household_number) as unique_households,
+            COUNT(id) as total_families,
+            COUNT(DISTINCT purok_sito) as unique_puroks,
+            SUM(number_of_members) as total_population,
+            
+            SUM(CASE WHEN number_of_members > 10 THEN 1 ELSE 0 END) as family_moreThan10,
+            SUM(CASE WHEN number_of_members BETWEEN 8 AND 10 THEN 1 ELSE 0 END) as family_n8to10,
+            SUM(CASE WHEN number_of_members BETWEEN 6 AND 7 THEN 1 ELSE 0 END) as family_n6to7,
+            SUM(CASE WHEN number_of_members BETWEEN 2 AND 5 THEN 1 ELSE 0 END) as family_n2to5,
+            SUM(CASE WHEN number_of_members <= 1 THEN 1 ELSE 0 END) as family_n1,
+
+            SUM(COALESCE(newborn_male,0) + COALESCE(newborn_female,0)) as age_newborn,
+            SUM(COALESCE(infant_male,0) + COALESCE(infant_female,0)) as age_infants,
+            SUM(COALESCE(under_five_male,0) + COALESCE(under_five_female,0)) as age_underFive,
+            SUM(COALESCE(children_male,0) + COALESCE(children_female,0)) as age_children5_9,
+            SUM(COALESCE(adolescence_male,0) + COALESCE(adolescence_female,0)) as age_adolescence,
+            SUM(COALESCE(adult_male,0) + COALESCE(adult_female,0)) as age_adult,
+            
+            SUM(COALESCE(pregnant,0)) as risk_pregnant,
+            SUM(COALESCE(adolescent_pregnant,0)) as risk_adolescentPregnant,
+            SUM(COALESCE(post_partum,0)) as risk_postPartum,
+            SUM(COALESCE(women_15_49_not_pregnant,0)) as risk_women15_49,
+            SUM(COALESCE(senior_citizen_male,0) + COALESCE(senior_citizen_female,0)) as risk_seniorCitizens,
+            SUM(COALESCE(pwd_male,0) + COALESCE(pwd_female,0)) as risk_pwd,
+
+            SUM(CASE WHEN couple_practicing_family_planning = 1 OR couple_practicing_family_planning = 'true' THEN 1 ELSE 0 END) as prac_coupleFP,
+            SUM(CASE WHEN toilet_type = 1 THEN 1 ELSE 0 END) as prac_toiletImproved,
+            SUM(CASE WHEN toilet_type = 2 THEN 1 ELSE 0 END) as prac_toiletShared,
+            SUM(CASE WHEN toilet_type = 3 THEN 1 ELSE 0 END) as prac_toiletUnimproved,
+            SUM(CASE WHEN toilet_type = 4 THEN 1 ELSE 0 END) as prac_toiletOpen,
+            SUM(CASE WHEN water_source = 1 THEN 1 ELSE 0 END) as prac_waterImproved,
+            SUM(CASE WHEN water_source = 2 THEN 1 ELSE 0 END) as prac_waterUnimproved,
+            
+            SUM(CASE WHEN UPPER(food_production_activity) = 'VG' THEN 1 ELSE 0 END) as prac_foodVG,
+            SUM(CASE WHEN UPPER(food_production_activity) = 'FT' THEN 1 ELSE 0 END) as prac_foodFruit,
+            SUM(CASE WHEN UPPER(food_production_activity) = 'PL' THEN 1 ELSE 0 END) as prac_foodPL,
+            SUM(CASE WHEN UPPER(food_production_activity) = 'FP' THEN 1 ELSE 0 END) as prac_foodFP,
+            SUM(CASE WHEN UPPER(food_production_activity) = 'NA' OR food_production_activity IS NULL OR food_production_activity = '' THEN 1 ELSE 0 END) as prac_foodNone,
+            
+            SUM(CASE WHEN using_iodized_salt = 1 OR using_iodized_salt = 'true' THEN 1 ELSE 0 END) as prac_iodizedSalt,
+            SUM(CASE WHEN using_iron_fortified_rice = 1 OR using_iron_fortified_rice = 'true' THEN 1 ELSE 0 END) as prac_ironFortifiedRice
+        ")->first();
+
+        // 2. Extract Member stats using a JOIN grouping
+        // We only aggregate for roles father, mother, caregiver
+        $membersQuery = \Illuminate\Support\Facades\DB::table('household_members')
+            ->join('households', 'households.id', '=', 'household_members.household_id')
+            ->selectRaw('
+                household_members.role,
+                household_members.occupation,
+                UPPER(household_members.educational_attainment) as educational_attainment,
+                COUNT(*) as aggregate_count
+            ')
+            ->whereIn('household_members.role', ['father', 'mother', 'caregiver'])
+            ->groupByRaw('household_members.role, household_members.occupation, UPPER(household_members.educational_attainment)');
+
+        // Apply same filters to members join
+        if ($request->has('barangay') && trim((string)$request->get('barangay')) !== '') {
+            $membersQuery->where('households.barangay', $request->get('barangay'));
+        }
+        if ($request->has('purokBlockStreet') && trim((string)$request->get('purokBlockStreet')) !== '') {
+            $membersQuery->where('households.purok_sito', $request->get('purokBlockStreet'));
+        }
+        if ($request->has('surveyYear') && is_numeric($request->get('surveyYear'))) {
+            $membersQuery->whereYear('households.created_at', (int)$request->get('surveyYear'));
+        }
+        if ($request->has('surveyPeriodFrom') && $request->get('surveyPeriodFrom')) {
+            $membersQuery->whereDate('households.created_at', '>=', "$year-" . str_pad($request->get('surveyPeriodFrom'), 2, '0', STR_PAD_LEFT) . "-01");
+        }
+        if ($request->has('surveyPeriodTo') && $request->get('surveyPeriodTo')) {
+            $membersQuery->whereDate('households.created_at', '<=', $endOfMonth);
+        }
+
+        $membersGroups = $membersQuery->get();
+
+        $occMap = ['1'=>0,'2'=>1,'3'=>2,'4'=>3,'5'=>4,'6'=>5,'7'=>6,'8'=>7,'9'=>8,'10'=>9,'11'=>10];
+        $edMap = ['N'=>0,'EU'=>1,'EG'=>2,'HU'=>3,'HG'=>4,'CU'=>5,'CG'=>6,'V'=>7,'PG'=>8];
+
+        $fatherOcc = array_fill(0, 11, 0);
+        $fatherEd = array_fill(0, 9, 0);
+        $motherOcc = array_fill(0, 11, 0);
+        $motherEd = array_fill(0, 9, 0);
+        $caregiverOcc = array_fill(0, 11, 0);
+        $caregiverEd = array_fill(0, 9, 0);
+
+        foreach ($membersGroups as $mg) {
+            $role = strtolower($mg->role);
+            $occIdx = $occMap[$mg->occupation] ?? 10;
+            $edIdx = $edMap[$mg->educational_attainment] ?? 0;
+            $count = $mg->aggregate_count;
+
+            if ($role === 'father') {
+                $fatherOcc[$occIdx] += $count;
+                $fatherEd[$edIdx] += $count;
+            } elseif ($role === 'mother') {
+                $motherOcc[$occIdx] += $count;
+                $motherEd[$edIdx] += $count;
+            } elseif ($role === 'caregiver') {
+                $caregiverOcc[$occIdx] += $count;
+                $caregiverEd[$edIdx] += $count;
+            }
+        }
+
+        return response()->json([
+            'totals' => [
+                'households' => (int) ($stats->unique_households ?? 0),
+                'families' => (int) ($stats->total_families ?? 0),
+                'purokBlockStreet' => (int) ($stats->unique_puroks ?? 0),
+                'population' => (int) ($stats->total_population ?? 0),
+            ],
+            'familySize' => [
+                'moreThan10' => (int) ($stats->family_moreThan10 ?? 0),
+                'n8to10' => (int) ($stats->family_n8to10 ?? 0),
+                'n6to7' => (int) ($stats->family_n6to7 ?? 0),
+                'n2to5' => (int) ($stats->family_n2to5 ?? 0),
+                'n1' => (int) ($stats->family_n1 ?? 0),
+            ],
+            'ageHealth' => [
+                'newborn' => (int) ($stats->age_newborn ?? 0),
+                'infants' => (int) ($stats->age_infants ?? 0),
+                'underFive' => (int) ($stats->age_underFive ?? 0),
+                'children5_9' => (int) ($stats->age_children5_9 ?? 0),
+                'adolescence' => (int) ($stats->age_adolescence ?? 0),
+                'adult' => (int) ($stats->age_adult ?? 0),
+                'pregnant' => (int) ($stats->risk_pregnant ?? 0),
+                'adolescentPregnant' => (int) ($stats->risk_adolescentPregnant ?? 0),
+                'postPartum' => (int) ($stats->risk_postPartum ?? 0),
+                'women15_49' => (int) ($stats->risk_women15_49 ?? 0),
+                'seniorCitizens' => (int) ($stats->risk_seniorCitizens ?? 0),
+                'pwd' => (int) ($stats->risk_pwd ?? 0),
+            ],
+            'practices' => [
+                'coupleFP' => (int) ($stats->prac_coupleFP ?? 0),
+                'toiletImproved' => (int) ($stats->prac_toiletImproved ?? 0),
+                'toiletShared' => (int) ($stats->prac_toiletShared ?? 0),
+                'toiletUnimproved' => (int) ($stats->prac_toiletUnimproved ?? 0),
+                'toiletOpen' => (int) ($stats->prac_toiletOpen ?? 0),
+                'waterImproved' => (int) ($stats->prac_waterImproved ?? 0),
+                'waterUnimproved' => (int) ($stats->prac_waterUnimproved ?? 0),
+                'foodVG' => (int) ($stats->prac_foodVG ?? 0),
+                'foodFruit' => (int) ($stats->prac_foodFruit ?? 0),
+                'foodPL' => (int) ($stats->prac_foodPL ?? 0),
+                'foodFP' => (int) ($stats->prac_foodFP ?? 0),
+                'foodNone' => (int) ($stats->prac_foodNone ?? 0),
+                'iodizedSalt' => (int) ($stats->prac_iodizedSalt ?? 0),
+                'ironFortifiedRice' => (int) ($stats->prac_ironFortifiedRice ?? 0),
+            ],
+            'fatherOcc' => $fatherOcc,
+            'fatherEd' => $fatherEd,
+            'motherOcc' => $motherOcc,
+            'motherEd' => $motherEd,
+            'caregiverOcc' => $caregiverOcc,
+            'caregiverEd' => $caregiverEd,
+        ]);
     }
 }

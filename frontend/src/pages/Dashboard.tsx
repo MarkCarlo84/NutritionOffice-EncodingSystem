@@ -21,103 +21,21 @@ const Dashboard = () => {
   const [barangayData, setBarangayData] = useState<BarangayData[]>([]);
 
   useEffect(() => {
-    // Fetch dashboard statistics from records data
+    // Fetch dashboard statistics from API aggregation endpoint
     const fetchStats = async () => {
       try {
-        const response = await api.get('/households', { params: { per_page: 10000 } });
-        // Laravel pagination: response.data.data = items, response.data.total = total count
-        const households = response.data?.data ?? response.data ?? [];
-        const totalEncoded = response.data?.total ?? (Array.isArray(households) ? households.length : 0);
-
-        const list = Array.isArray(households) ? households : [];
-
-        // Barangays covered: unique barangays with records
-        const uniqueBarangays = new Set(list.map((h: any) => h.barangay).filter(Boolean));
-        const barangaysCovered = uniqueBarangays.size;
-
-        // Sex distribution: sum male/female from all age groups in records
-        let maleCount = 0;
-        let femaleCount = 0;
-
-        list.forEach((household: any) => {
-          maleCount += (household.newborn_male || 0) + (household.infant_male || 0) +
-            (household.under_five_male || 0) + (household.children_male || 0) +
-            (household.adolescence_male || 0) + (household.adult_male || 0) +
-            (household.senior_citizen_male || 0) + (household.pwd_male || 0);
-
-          femaleCount += (household.newborn_female || 0) + (household.infant_female || 0) +
-            (household.under_five_female || 0) + (household.children_female || 0) +
-            (household.adolescence_female || 0) + (household.adult_female || 0) +
-            (household.senior_citizen_female || 0) + (household.pwd_female || 0);
-        });
-
-        // Last update: most recent updated_at across all records
-        let lastUpdate = '—';
-        if (list.length > 0) {
-          const latestTimestamp = Math.max(
-            ...list.map((h: any) => new Date(h.updated_at || 0).getTime())
-          );
-          if (latestTimestamp > 0) {
-            lastUpdate = new Date(latestTimestamp).toLocaleDateString('en-US', {
-              month: '2-digit',
-              day: '2-digit',
-              year: '2-digit'
-            });
-          }
-        }
-
-        // Define all barangays that should be displayed (full names for database matching)
-        const allBarangays = [
-          'Baclaran',
-          'Banay-Banay',
-          'Banlic',
-          'Bigaa',
-          'Butong',
-          'Casile',
-          'Diezmo',
-          'Pulo',
-          'Sala',
-          'San Isidro',
-          'Pob. Uno',
-          'Pob. Dos',
-          'Pob. Tres',
-        ];
-
-        // Display name mapping (none needed currently)
-        const barangayDisplayNames: { [key: string]: string } = {};
-
-        // Calculate barangay distribution
-        const barangayCounts: { [key: string]: number } = {};
-
-        // Initialize all barangays with 0 count
-        allBarangays.forEach(barangay => {
-          barangayCounts[barangay] = 0;
-        });
-
-        // Count actual records per barangay
-        list.forEach((household: any) => {
-          const barangay = household.barangay || 'Unknown';
-          if (allBarangays.includes(barangay)) {
-            barangayCounts[barangay] = (barangayCounts[barangay] || 0) + 1;
-          }
-        });
-
-        // Create barangay data array with all barangays in the specified order
-        const barangayDataArray: BarangayData[] = allBarangays.map(barangay => ({
-          barangay,
-          count: barangayCounts[barangay] || 0,
-          displayName: barangayDisplayNames[barangay] || barangay
-        }));
-
-        setBarangayData(barangayDataArray);
-
+        const response = await api.get('/households/dashboard-stats');
+        const data = response.data;
+        
         setStats({
-          totalEncoded,
-          barangaysCovered,
-          maleCount,
-          femaleCount,
-          lastUpdate,
+          totalEncoded: data.stats.totalEncoded,
+          barangaysCovered: data.stats.barangaysCovered,
+          maleCount: data.stats.maleCount,
+          femaleCount: data.stats.femaleCount,
+          lastUpdate: data.stats.lastUpdate,
         });
+
+        setBarangayData(data.barangayData);
       } catch (error) {
         console.error('Error fetching dashboard stats:', error);
       } finally {
@@ -218,30 +136,32 @@ const Dashboard = () => {
                     ))}
                   </div>
                   <div className="chart-bars-container">
-                    <div className="chart-bars">
-                      {barangayData.map((item, index) => {
-                        const height = niceMax > 0 ? (item.count / niceMax) * 100 : 0;
-                        const displayName = item.displayName || item.barangay;
-                        return (
-                          <div key={index} className="bar-wrapper">
-                            <div
-                              className="bar"
-                              style={{ height: `${height}%` }}
-                              title={`${displayName}: ${item.count} records`}
-                            >
-                              <span className="bar-value">{item.count}</span>
+                    <div className="chart-scroll-area">
+                      <div className="chart-bars">
+                        {barangayData.map((item, index) => {
+                          const height = niceMax > 0 ? (item.count / niceMax) * 100 : 0;
+                          const displayName = item.displayName || item.barangay;
+                          return (
+                            <div key={index} className="bar-wrapper">
+                              <div
+                                className="bar"
+                                style={{ height: `${height}%` }}
+                                title={`${displayName}: ${item.count} records`}
+                              >
+                                <span className="bar-value">{item.count}</span>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="chart-labels-row">
-                      {barangayData.map((item, index) => {
-                        const displayName = item.displayName || item.barangay;
-                        return (
-                          <div key={index} className="bar-label">{displayName}</div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                      <div className="chart-labels-row">
+                        {barangayData.map((item, index) => {
+                          const displayName = item.displayName || item.barangay;
+                          return (
+                            <div key={index} className="bar-label">{displayName}</div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </>

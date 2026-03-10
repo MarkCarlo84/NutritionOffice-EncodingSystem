@@ -7,7 +7,13 @@ const thinBorder = {
   right: { style: 'thin' as const },
 };
 
-export const BNS_COL_WIDTHS = [8, 10, 10, 12, 12, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 8, 10, 8, 14, 10, 10, 10, 10, 10, 10, 18, 18, 18, 12, 12, 12, 15, 15, 15];
+export const BNS_COL_WIDTHS = [
+  10, 14, 14, 18, 16, 
+  9, 9, 10, 10, 10, 10, 10, 10, 12, 12, 
+  12, 12, 10, 14, 
+  10, 10, 10, 10, 10, 10, 
+  30, 24, 20, 18, 14, 14, 20, 16, 18
+];
 
 /**
  * Build BNS Form header rows 1-10 (same as Import page Download Template).

@@ -268,7 +268,7 @@ const ExportData = () => {
       let globalIndex = 0;
       let pageIndex = 0;
 
-      while (globalIndex < households.length) {
+      while (globalIndex < households.length || (households.length === 0 && pageIndex === 0)) {
         if (pageIndex > 0) doc.addPage();
         drawBnsHeader();
 
@@ -279,8 +279,10 @@ const ExportData = () => {
         let usedHeight = 0;
         let rowsOnPage = 0;
 
-        while (globalIndex < households.length && rowsOnPage < maxHouseholdsPerPage) {
-          const h: any = households[globalIndex];
+        // Render exactly 8 rows per page
+        while (rowsOnPage < maxHouseholdsPerPage) {
+          const hasData = globalIndex < households.length;
+          const h: any = hasData ? households[globalIndex] : {};
           const father = h.members?.find((m: any) => m.role === 'father');
           const mother = h.members?.find((m: any) => m.role === 'mother');
           const caregiver = h.members?.find((m: any) => m.role === 'caregiver');
@@ -315,13 +317,13 @@ const ExportData = () => {
           bodyBandHeights.push(bandHeights);
 
           const r: Record<string, any> = {};
-          r['C1'] = bnsFormFilters.purokSitio === '' ? '' : globalIndex + 1; // Sequential HH No. across pages if a specific Purok is selected
+          r['C1'] = hasData ? (bnsFormFilters.purokSitio === '' ? '' : globalIndex + 1) : ''; // Sequential HH No. across pages if a specific Purok is selected
           r['C2'] = h.family_living_in_house ?? '';
           r['C3'] = h.number_of_members ?? '';
           r['C4'] = h.nhts_household_group || '';
           r['C5'] = h.indigenous_group || '';
           ageFields.forEach((f, idx) => {
-            r[`C${6 + idx}`] = (h as any)[f] ?? 0;
+            r[`C${6 + idx}`] = hasData ? ((h as any)[f] ?? 0) : '';
           });
           // C26/C27/C28 drawn in didDrawCell so each line is in its own row band; leave empty for table
           r['C26'] = '';
@@ -336,7 +338,9 @@ const ExportData = () => {
           r['C34'] = yesNo(h.using_iron_fortified_rice);
 
           body.push(r);
-          globalIndex += 1;
+          if (hasData) {
+            globalIndex += 1;
+          }
           rowsOnPage += 1;
         }
 
@@ -645,7 +649,12 @@ const ExportData = () => {
       const fileName = `Nutrition_BNS_Form_${stamp}.pdf`;
       doc.save(fileName);
       const pageCount = Math.max(1, pageIndex);
-      setMessage({ type: 'success', text: `BNS Form PDF generated (${households.length} household${households.length === 1 ? '' : 's'}) on ${pageCount} page${pageCount === 1 ? '' : 's'} (8 households max per page).` });
+      
+      if (households.length === 0) {
+        setMessage({ type: 'success', text: `No data found. Generated a blank PDF with a "No Survey Conducted" watermark.` });
+      } else {
+        setMessage({ type: 'success', text: `BNS Form PDF generated (${households.length} household${households.length === 1 ? '' : 's'}) on ${pageCount} page${pageCount === 1 ? '' : 's'} (8 households max per page).` });
+      }
     } catch (err: any) {
       console.error('handleExportBnsPdf error:', err);
       setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'Error generating BNS PDF' });
@@ -747,7 +756,6 @@ const ExportData = () => {
       const year = new Date().getFullYear();
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [936, 612] /* 8.5 x 13 inches */ });
       const pageWidth = (doc.internal.pageSize as any).getWidth();
-      const pageHeight = (doc.internal.pageSize as any).getHeight();
 
       // Header block (centered) - smaller fonts for single-page fit
       const headerTop = 14;
