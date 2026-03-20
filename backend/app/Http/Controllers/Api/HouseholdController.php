@@ -448,11 +448,62 @@ class HouseholdController extends Controller
                 $newVal = $householdData[$field] ?? null;
                 $oldVal = $existing->$field;
 
-                // Normalize booleans and nulls for comparison
-                $oldNorm = is_bool($oldVal) ? ($oldVal ? 'Yes' : 'No') : (string)($oldVal ?? '');
-                $newNorm = is_bool($newVal) ? ($newVal ? 'Yes' : 'No') : (string)($newVal ?? '');
+                // Normalize values for comparison
+                $oldNorm = $this->normalizeValue($oldVal);
+                $newNorm = $this->normalizeValue($newVal);
+
+                // For numeric fields, treat 0 and empty as the same
+                $numericFields = [
+                    'number_of_members', 'newborn_male', 'newborn_female', 'infant_male', 'infant_female',
+                    'under_five_male', 'under_five_female', 'children_male', 'children_female',
+                    'adolescence_male', 'adolescence_female', 'pregnant', 'adolescent_pregnant',
+                    'post_partum', 'women_15_49_not_pregnant', 'adult_male', 'adult_female',
+                    'senior_citizen_male', 'senior_citizen_female', 'pwd_male', 'pwd_female'
+                ];
+                
+                if (in_array($field, $numericFields)) {
+                    // Treat 0 and empty as equivalent for numeric fields
+                    if (($oldNorm === '0' || $oldNorm === '') && ($newNorm === '0' || $newNorm === '')) {
+                        continue; // Skip - they're equivalent
+                    }
+                }
+                
+                // For string fields, treat empty and null as the same
+                $stringFields = [
+                    'family_living_in_house', 'nhts_household_group', 'indigenous_group',
+                    'toilet_type', 'water_source', 'food_production_activity'
+                ];
+                
+                if (in_array($field, $stringFields)) {
+                    // Treat empty string and null as equivalent
+                    if ($oldNorm === '' && $newNorm === '') {
+                        continue;
+                    }
+                }
+                
+                // For boolean fields, normalize to 0/1
+                $booleanFields = ['couple_practicing_family_planning', 'using_iodized_salt', 'using_iron_fortified_rice'];
+                if (in_array($field, $booleanFields)) {
+                    // Treat false/0/empty as equivalent
+                    if (($oldNorm === '0' || $oldNorm === '') && ($newNorm === '0' || $newNorm === '')) {
+                        continue;
+                    }
+                }
 
                 if ($oldNorm !== $newNorm) {
+                    // Log for debugging (first 3 households only)
+                    if ($index < 3) {
+                        \Log::info("Field diff detected", [
+                            'index' => $index,
+                            'hhNumber' => $hhNumber,
+                            'field' => $field,
+                            'oldVal' => $oldVal,
+                            'oldNorm' => $oldNorm,
+                            'newVal' => $newVal,
+                            'newNorm' => $newNorm,
+                        ]);
+                    }
+                    
                     $diffs[] = [
                         'field'    => $field,
                         'label'    => $label,
@@ -462,21 +513,49 @@ class HouseholdController extends Controller
                 }
             }
 
-            // Compare members (father, mother, caregiver names)
+            // Compare members (father, mother, caregiver names, occupation, educational_attainment)
             $incomingMembers = $householdData['members'] ?? [];
             $existingMembers = $existing->members->keyBy('role');
             foreach (['father', 'mother', 'caregiver'] as $role) {
                 $incomingMember = collect($incomingMembers)->firstWhere('role', $role);
                 $existingMember = $existingMembers->get($role);
-                $incomingName   = $incomingMember['name'] ?? '';
-                $existingName   = $existingMember ? ($existingMember->name ?? '') : '';
-                if (trim($incomingName) !== trim($existingName)) {
+                
+                $incomingName = $this->normalizeValue($incomingMember['name'] ?? '');
+                $existingName = $this->normalizeValue($existingMember ? ($existingMember->name ?? '') : '');
+                
+                $incomingOcc = $this->normalizeValue($incomingMember['occupation'] ?? '');
+                $existingOcc = $this->normalizeValue($existingMember ? ($existingMember->occupation ?? '') : '');
+                
+                $incomingEd = $this->normalizeValue($incomingMember['educational_attainment'] ?? '');
+                $existingEd = $this->normalizeValue($existingMember ? ($existingMember->educational_attainment ?? '') : '');
+                
+                if ($incomingName !== $existingName) {
                     $label = ucfirst($role) . ' Name';
                     $diffs[] = [
                         'field'    => $role . '_name',
                         'label'    => $label,
                         'oldValue' => $existingName ?: null,
                         'newValue' => $incomingName ?: null,
+                    ];
+                }
+                
+                if ($incomingOcc !== $existingOcc) {
+                    $label = ucfirst($role) . ' Occupation';
+                    $diffs[] = [
+                        'field'    => $role . '_occupation',
+                        'label'    => $label,
+                        'oldValue' => $existingOcc ?: null,
+                        'newValue' => $incomingOcc ?: null,
+                    ];
+                }
+                
+                if ($incomingEd !== $existingEd) {
+                    $label = ucfirst($role) . ' Educational Attainment';
+                    $diffs[] = [
+                        'field'    => $role . '_educational_attainment',
+                        'label'    => $label,
+                        'oldValue' => $existingEd ?: null,
+                        'newValue' => $incomingEd ?: null,
                     ];
                 }
             }
@@ -777,5 +856,28 @@ class HouseholdController extends Controller
             'caregiverOcc' => $caregiverOcc,
             'caregiverEd' => $caregiverEd,
         ]);
+    }
+
+    /**
+     * Normalize a value for comparison (handles nulls, empty strings, zeros, and booleans).
+     */
+    private function normalizeValue($value): string
+    {
+        // Handle booleans
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        // Handle null - treat as empty
+        if ($value === null) {
+            return '';
+        }
+
+        // Convert to string
+        $strValue = trim((string)$value);
+
+        // Treat empty string and "0" differently
+        // Empty string stays empty, zero stays "0"
+        return $strValue;
     }
 }

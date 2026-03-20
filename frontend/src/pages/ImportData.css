@@ -579,6 +579,7 @@
   background: var(--color-bg);
   overflow: hidden;
   transition: border-color 0.15s;
+  min-height: 80px;
 }
 
 .change-household-card.selected {

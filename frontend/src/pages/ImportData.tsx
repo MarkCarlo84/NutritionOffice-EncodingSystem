@@ -452,6 +452,8 @@ const ImportData = () => {
       });
 
       const preview: any[] = previewResponse.data.preview ?? [];
+      console.log('Preview response:', preview.slice(0, 3)); // Log first 3 for debugging
+      
       const changed: ChangedHousehold[] = preview
         .filter((p) => p.status === 'changed')
         .map((p) => ({
@@ -463,6 +465,8 @@ const ImportData = () => {
           purok_sito: p.purok_sito,
           diffs: p.diffs,
         }));
+
+      console.log('Changed households:', changed.length, changed.slice(0, 2)); // Log count and first 2
 
       if (changed.length > 0) {
         // Show confirmation modal — keep households in state for Phase 2
