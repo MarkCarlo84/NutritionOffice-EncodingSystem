@@ -1,5 +1,5 @@
 export const BNS_BY_BARANGAY: Record<string, string[]> = {
-  'Baclaran': ['Levi Marcellana Garcia'],
+  'Baclaran': [],
   'Banay-Banay': ['Mauricia D. Basisao'],
   'Banlic': ['Hazel B. Bumanlag'],
   'Bigaa': ['Jenet D. Perez'],
@@ -19,7 +19,7 @@ export const getBnsOptions = (barangay: string): string[] => BNS_BY_BARANGAY[bar
 export const resolveBnsForBarangay = (barangay: string, currentBns: string): string => {
   if (!barangay) return '';
   const options = getBnsOptions(barangay);
-  if (options.length === 0) return currentBns;
+  if (options.length === 0) return '';
   if (options.includes(currentBns)) return currentBns;
   return options[0];
 };
