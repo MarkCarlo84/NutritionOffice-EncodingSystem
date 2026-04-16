@@ -17,11 +17,13 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Nutrition Office Admin',
-            'email' => 'admin@nutrition.cabuyao.gov.ph',
-            'password' => \Illuminate\Support\Facades\Hash::make('password'),
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@nutrition.cabuyao.gov.ph'],
+            [
+                'name' => 'Nutrition Office Admin',
+                'password' => \Illuminate\Support\Facades\Hash::make('password'),
+            ]
+        );
 
         // $this->call(SampleDataSeeder::class);
     }
