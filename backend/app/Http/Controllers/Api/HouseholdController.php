@@ -443,23 +443,43 @@ class HouseholdController extends Controller
             }
 
             // Compare fields
+            $numericFields = [
+                'number_of_members','newborn_male','newborn_female','infant_male','infant_female',
+                'under_five_male','under_five_female','children_male','children_female',
+                'adolescence_male','adolescence_female','pregnant','adolescent_pregnant',
+                'post_partum','women_15_49_not_pregnant','adult_male','adult_female',
+                'senior_citizen_male','senior_citizen_female','pwd_male','pwd_female',
+            ];
+            $booleanFields = ['couple_practicing_family_planning','using_iodized_salt','using_iron_fortified_rice'];
+
             $diffs = [];
             foreach ($fieldLabels as $field => $label) {
                 $newVal = $householdData[$field] ?? null;
                 $oldVal = $existing->$field;
 
-                // Normalize booleans and nulls for comparison
-                $oldNorm = is_bool($oldVal) ? ($oldVal ? 'Yes' : 'No') : (string)($oldVal ?? '');
-                $newNorm = is_bool($newVal) ? ($newVal ? 'Yes' : 'No') : (string)($newVal ?? '');
-
-                if ($oldNorm !== $newNorm) {
-                    $diffs[] = [
-                        'field'    => $field,
-                        'label'    => $label,
-                        'oldValue' => $oldVal,
-                        'newValue' => $newVal,
-                    ];
+                if (in_array($field, $booleanFields)) {
+                    // Normalize booleans: null/0/false → false, 1/true → true
+                    $oldNorm = filter_var($oldVal, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+                    $newNorm = filter_var($newVal, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+                    if ($oldNorm === $newNorm) continue;
+                } elseif (in_array($field, $numericFields)) {
+                    // Normalize numeric fields: null and 0 are treated as equivalent
+                    $oldNorm = (int)($oldVal ?? 0);
+                    $newNorm = (int)($newVal ?? 0);
+                    if ($oldNorm === $newNorm) continue;
+                } else {
+                    // String fields: treat null and '' as equivalent
+                    $oldNorm = trim((string)($oldVal ?? ''));
+                    $newNorm = trim((string)($newVal ?? ''));
+                    if ($oldNorm === $newNorm) continue;
                 }
+
+                $diffs[] = [
+                    'field'    => $field,
+                    'label'    => $label,
+                    'oldValue' => $oldVal,
+                    'newValue' => $newVal,
+                ];
             }
 
             // Compare members (father, mother, caregiver names)
