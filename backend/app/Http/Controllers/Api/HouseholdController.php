@@ -212,6 +212,7 @@ class HouseholdController extends Controller
 
     /**
      * Import households from Excel/CSV file or JSON data.
+     * OPTIMIZED VERSION with batch operations
      */
     public function import(Request $request): JsonResponse
     {
@@ -226,57 +227,42 @@ class HouseholdController extends Controller
             if ($request->has('households') && is_array($request->households)) {
                 $households = $request->households;
                 
+                // OPTIMIZATION: Batch fetch existing households
+                $householdKeys = [];
+                foreach ($households as $hh) {
+                    $hhNum = trim($hh['household_number'] ?? '');
+                    $barangay = trim($hh['barangay'] ?? '');
+                    $purok = trim($hh['purok_sito'] ?? '');
+                    $family = trim($hh['family_living_in_house'] ?? '');
+                    if ($hhNum) {
+                        $householdKeys[] = "{$hhNum}|{$barangay}|{$purok}|{$family}";
+                    }
+                }
+
+                $existingHouseholds = Household::whereIn(
+                    \DB::raw("household_number || '|' || barangay || '|' || purok_sito || '|' || family_living_in_house"),
+                    $householdKeys
+                )->get()->keyBy(function($item) {
+                    return "{$item->household_number}|{$item->barangay}|{$item->purok_sito}|{$item->family_living_in_house}";
+                });
+
+                $householdsToInsert = [];
+                $householdsToUpdate = [];
+                
                 foreach ($households as $index => $householdData) {
                     try {
-                        // Extract members from household data
                         $members = $householdData['members'] ?? [];
                         unset($householdData['members']);
 
-                        // Normalize key text inputs before validation/checks
+                        // Normalize key text inputs
                         foreach (['household_number', 'purok_sito', 'barangay', 'municipality_city', 'province'] as $key) {
                             if (isset($householdData[$key]) && is_string($householdData[$key])) {
                                 $householdData[$key] = trim($householdData[$key]);
                             }
                         }
 
-                        // Validate and create household
-                        $validator = \Validator::make($householdData, [
-                            'household_number' => 'required|string|max:255',
-                            'purok_sito' => 'required|string|max:255',
-                            'barangay' => 'required|string|max:255',
-                            'municipality_city' => 'nullable|string|max:255',
-                            'province' => 'nullable|string|max:255',
-                            'family_living_in_house' => 'nullable|string|max:255',
-                            'number_of_members' => 'nullable|integer|min:0',
-                            'nhts_household_group' => 'nullable|string|max:255',
-                            'indigenous_group' => 'nullable|string|max:255',
-                            'newborn_male' => 'nullable|integer|min:0',
-                            'newborn_female' => 'nullable|integer|min:0',
-                            'infant_male' => 'nullable|integer|min:0',
-                            'infant_female' => 'nullable|integer|min:0',
-                            'under_five_male' => 'nullable|integer|min:0',
-                            'under_five_female' => 'nullable|integer|min:0',
-                            'children_male' => 'nullable|integer|min:0',
-                            'children_female' => 'nullable|integer|min:0',
-                            'adolescence_male' => 'nullable|integer|min:0',
-                            'adolescence_female' => 'nullable|integer|min:0',
-                            'pregnant' => 'nullable|integer|min:0',
-                            'adolescent_pregnant' => 'nullable|integer|min:0',
-                            'post_partum' => 'nullable|integer|min:0',
-                            'women_15_49_not_pregnant' => 'nullable|integer|min:0',
-                            'adult_male' => 'nullable|integer|min:0',
-                            'adult_female' => 'nullable|integer|min:0',
-                            'senior_citizen_male' => 'nullable|integer|min:0',
-                            'senior_citizen_female' => 'nullable|integer|min:0',
-                            'pwd_male' => 'nullable|integer|min:0',
-                            'pwd_female' => 'nullable|integer|min:0',
-                            'toilet_type' => 'nullable|string|max:255',
-                            'water_source' => 'nullable|string|max:255',
-                            'food_production_activity' => 'nullable|string|max:255',
-                            'couple_practicing_family_planning' => 'nullable|boolean',
-                            'using_iodized_salt' => 'nullable|boolean',
-                            'using_iron_fortified_rice' => 'nullable|boolean',
-                        ]);
+                        // Validate
+                        $validator = \Validator::make($householdData, $validationRules);
 
                         if ($validator->fails()) {
                             $failed++;
@@ -285,65 +271,112 @@ class HouseholdController extends Controller
                         }
 
                         $validated = $validator->validated();
-
-                        // Check duplicate: same household_number + barangay + purok_sito
                         $barangay = $validated['barangay'] ?? '';
                         $purokSito = $validated['purok_sito'] ?? '';
-                        $existing = Household::where('household_number', $validated['household_number'])
-                            ->where('barangay', $barangay)
-                            ->where('purok_sito', $purokSito)
-                            ->where('family_living_in_house', $validated['family_living_in_house'] ?? '')
-                            ->first();
+                        $familyLiving = $validated['family_living_in_house'] ?? '';
+                        $key = "{$validated['household_number']}|{$barangay}|{$purokSito}|{$familyLiving}";
+
+                        $existing = $existingHouseholds->get($key);
                         if ($existing) {
                             $forceUpdate = isset($householdData['force_update']) && $householdData['force_update'];
                             if ($forceUpdate) {
-                                // Update existing household with new data
-                                $existing->update($validated);
-                                // Sync members: delete old, add new
-                                $existing->members()->delete();
-                                foreach ($members as $memberData) {
-                                    if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
-                                        $existing->members()->create([
-                                            'role'                   => $memberData['role'] ?? null,
-                                            'name'                   => $memberData['name'] ?? null,
-                                            'occupation'             => $memberData['occupation'] ?? null,
-                                            'educational_attainment' => $memberData['educational_attainment'] ?? null,
-                                            'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
-                                        ]);
-                                    }
-                                }
-                                $successful++;
+                                $householdsToUpdate[] = [
+                                    'id' => $existing->id,
+                                    'data' => $validated,
+                                    'members' => $members
+                                ];
                             } else {
                                 $skipped++;
-                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}', Family '{$validated['family_living_in_house']}')";
+                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}', Family '{$familyLiving}')";
                             }
                             continue;
                         }
 
-                        // Create household
-                        $household = Household::create($validated);
+                        $validated['created_at'] = now();
+                        $validated['updated_at'] = now();
+                        $householdsToInsert[] = [
+                            'data' => $validated,
+                            'members' => $members,
+                            'index' => $index
+                        ];
 
-                        // Create household members
-                        foreach ($members as $memberData) {
-                            if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
-                                $household->members()->create([
-                                    'role' => $memberData['role'] ?? null,
-                                    'name' => $memberData['name'] ?? null,
-                                    'occupation' => $memberData['occupation'] ?? null,
-                                    'educational_attainment' => $memberData['educational_attainment'] ?? null,
-                                    'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
-                                ]);
-                            }
-                        }
-
-                        $successful++;
                     } catch (\Exception $e) {
                         $failed++;
                         $errors[] = "Row " . ($index + 1) . ": " . $e->getMessage();
                     }
                 }
+
+                // Execute batch operations
+                \DB::transaction(function () use (&$householdsToInsert, &$householdsToUpdate, &$successful, &$failed, &$errors) {
+                    // Batch insert
+                    foreach ($householdsToInsert as $item) {
+                        try {
+                            $household = Household::create($item['data']);
+                            
+                            if (!empty($item['members'])) {
+                                $memberRecords = [];
+                                foreach ($item['members'] as $memberData) {
+                                    if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
+                                        $memberRecords[] = [
+                                            'household_id' => $household->id,
+                                            'role' => $memberData['role'] ?? null,
+                                            'name' => $memberData['name'] ?? null,
+                                            'occupation' => $memberData['occupation'] ?? null,
+                                            'educational_attainment' => $memberData['educational_attainment'] ?? null,
+                                            'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
+                                            'created_at' => now(),
+                                            'updated_at' => now(),
+                                        ];
+                                    }
+                                }
+                                if (!empty($memberRecords)) {
+                                    HouseholdMember::insert($memberRecords);
+                                }
+                            }
+                            $successful++;
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $errors[] = "Row " . ($item['index'] + 1) . ": " . $e->getMessage();
+                        }
+                    }
+
+                    // Batch update
+                    foreach ($householdsToUpdate as $item) {
+                        try {
+                            $household = Household::find($item['id']);
+                            if ($household) {
+                                $household->update($item['data']);
+                                HouseholdMember::where('household_id', $household->id)->delete();
+                                
+                                if (!empty($item['members'])) {
+                                    $memberRecords = [];
+                                    foreach ($item['members'] as $memberData) {
+                                        if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
+                                            $memberRecords[] = [
+                                                'household_id' => $household->id,
+                                                'role' => $memberData['role'] ?? null,
+                                                'name' => $memberData['name'] ?? null,
+                                                'occupation' => $memberData['occupation'] ?? null,
+                                                'educational_attainment' => $memberData['educational_attainment'] ?? null,
+                                                'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
+                                                'created_at' => now(),
+                                                'updated_at' => now(),
+                                            ];
+                                        }
+                                    }
+                                    if (!empty($memberRecords)) {
+                                        HouseholdMember::insert($memberRecords);
+                                    }
+                                }
+                            }
+                            $successful++;
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $errors[] = "Update error: " . $e->getMessage();
+                        }
+                    }
+                });
             } else {
-                // Handle file upload (CSV or future Excel file handling)
                 return response()->json([
                     'message' => 'Please use the Excel format (BNS Form) for importing data.',
                     'error' => 'File upload not yet supported. Please use the BNS Form Excel format.',
@@ -367,6 +400,303 @@ class HouseholdController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Bulk import households from multiple Excel files (up to 5 files).
+     * POST /api/households/bulk-import
+     * OPTIMIZED VERSION with batch operations and reduced queries
+     */
+    public function bulkImport(Request $request): JsonResponse
+    {
+        \Log::info('Bulk import started', ['request_data' => $request->all()]);
+        
+        $request->validate([
+            'files' => 'required|array|min:1|max:5',
+            'files.*.households' => 'required|array',
+            'files.*.filename' => 'required|string',
+        ]);
+
+        \Log::info('Validation passed');
+
+        $filesData = $request->input('files', []);
+        $totalSuccessful = 0;
+        $totalFailed = 0;
+        $totalSkipped = 0;
+        $fileResults = [];
+
+        // Validation rules (reuse for all households)
+        $validationRules = [
+            'household_number' => 'required|string|max:255',
+            'purok_sito' => 'required|string|max:255',
+            'barangay' => 'required|string|max:255',
+            'municipality_city' => 'nullable|string|max:255',
+            'province' => 'nullable|string|max:255',
+            'family_living_in_house' => 'nullable|string|max:255',
+            'number_of_members' => 'nullable|integer|min:0',
+            'nhts_household_group' => 'nullable|string|max:255',
+            'indigenous_group' => 'nullable|string|max:255',
+            'newborn_male' => 'nullable|integer|min:0',
+            'newborn_female' => 'nullable|integer|min:0',
+            'infant_male' => 'nullable|integer|min:0',
+            'infant_female' => 'nullable|integer|min:0',
+            'under_five_male' => 'nullable|integer|min:0',
+            'under_five_female' => 'nullable|integer|min:0',
+            'children_male' => 'nullable|integer|min:0',
+            'children_female' => 'nullable|integer|min:0',
+            'adolescence_male' => 'nullable|integer|min:0',
+            'adolescence_female' => 'nullable|integer|min:0',
+            'pregnant' => 'nullable|integer|min:0',
+            'adolescent_pregnant' => 'nullable|integer|min:0',
+            'post_partum' => 'nullable|integer|min:0',
+            'women_15_49_not_pregnant' => 'nullable|integer|min:0',
+            'adult_male' => 'nullable|integer|min:0',
+            'adult_female' => 'nullable|integer|min:0',
+            'senior_citizen_male' => 'nullable|integer|min:0',
+            'senior_citizen_female' => 'nullable|integer|min:0',
+            'pwd_male' => 'nullable|integer|min:0',
+            'pwd_female' => 'nullable|integer|min:0',
+            'toilet_type' => 'nullable|string|max:255',
+            'water_source' => 'nullable|string|max:255',
+            'food_production_activity' => 'nullable|string|max:255',
+            'couple_practicing_family_planning' => 'nullable|boolean',
+            'using_iodized_salt' => 'nullable|boolean',
+            'using_iron_fortified_rice' => 'nullable|boolean',
+        ];
+
+        foreach ($filesData as $fileIndex => $fileData) {
+            $filename = $fileData['filename'] ?? "File " . ($fileIndex + 1);
+            $households = $fileData['households'] ?? [];
+            
+            \Log::info("Processing file: {$filename}", ['household_count' => count($households)]);
+            
+            $successful = 0;
+            $failed = 0;
+            $skipped = 0;
+            $errors = [];
+            $skippedLogs = [];
+
+            try {
+                // OPTIMIZATION 1: Batch fetch all existing households to reduce queries
+                $householdKeys = [];
+                foreach ($households as $hh) {
+                    $hhNum = trim($hh['household_number'] ?? '');
+                    $barangay = trim($hh['barangay'] ?? '');
+                    $purok = trim($hh['purok_sito'] ?? '');
+                    $family = trim($hh['family_living_in_house'] ?? '');
+                    if ($hhNum) {
+                        $householdKeys[] = "{$hhNum}|{$barangay}|{$purok}|{$family}";
+                    }
+                }
+
+                // Fetch all existing households in one query
+                $existingHouseholds = Household::whereIn(
+                    \DB::raw("household_number || '|' || barangay || '|' || purok_sito || '|' || family_living_in_house"),
+                    $householdKeys
+                )->get()->keyBy(function($item) {
+                    return "{$item->household_number}|{$item->barangay}|{$item->purok_sito}|{$item->family_living_in_house}";
+                });
+
+                // OPTIMIZATION 2: Prepare batch inserts
+                $householdsToInsert = [];
+                $membersToInsert = [];
+                $householdsToUpdate = [];
+
+                foreach ($households as $index => $householdData) {
+                    try {
+                        $members = $householdData['members'] ?? [];
+                        unset($householdData['members']);
+
+                        // Normalize text inputs
+                        foreach (['household_number', 'purok_sito', 'barangay', 'municipality_city', 'province'] as $key) {
+                            if (isset($householdData[$key]) && is_string($householdData[$key])) {
+                                $householdData[$key] = trim($householdData[$key]);
+                            }
+                        }
+
+                        // Validate
+                        $validator = \Validator::make($householdData, $validationRules);
+                        if ($validator->fails()) {
+                            $failed++;
+                            $errors[] = "Row " . ($index + 1) . ": " . $validator->errors()->first();
+                            continue;
+                        }
+
+                        $validated = $validator->validated();
+                        $barangay = $validated['barangay'] ?? '';
+                        $purokSito = $validated['purok_sito'] ?? '';
+                        $familyLiving = $validated['family_living_in_house'] ?? '';
+                        $key = "{$validated['household_number']}|{$barangay}|{$purokSito}|{$familyLiving}";
+
+                        // Check if exists
+                        $existing = $existingHouseholds->get($key);
+                        
+                        if ($existing) {
+                            $forceUpdate = isset($householdData['force_update']) && $householdData['force_update'];
+                            if ($forceUpdate) {
+                                $householdsToUpdate[] = [
+                                    'id' => $existing->id,
+                                    'data' => $validated,
+                                    'members' => $members
+                                ];
+                                $successful++;
+                            } else {
+                                $skipped++;
+                                $skippedLogs[] = "Row " . ($index + 1) . ": Duplicate skipped (HH No. '{$validated['household_number']}', Barangay '{$barangay}', Purok/Sitio '{$purokSito}', Family '{$familyLiving}')";
+                            }
+                            continue;
+                        }
+
+                        // Prepare for batch insert
+                        $validated['created_at'] = now();
+                        $validated['updated_at'] = now();
+                        $householdsToInsert[] = [
+                            'data' => $validated,
+                            'members' => $members,
+                            'index' => $index
+                        ];
+
+                    } catch (\Exception $e) {
+                        $failed++;
+                        $errors[] = "Row " . ($index + 1) . ": " . $e->getMessage();
+                    }
+                }
+
+                // OPTIMIZATION 3: Execute batch operations within transaction
+                \DB::transaction(function () use (
+                    &$householdsToInsert, 
+                    &$householdsToUpdate, 
+                    &$successful, 
+                    &$failed, 
+                    &$errors
+                ) {
+                    // Batch insert new households
+                    if (!empty($householdsToInsert)) {
+                        foreach ($householdsToInsert as $item) {
+                            try {
+                                $household = Household::create($item['data']);
+                                
+                                // Insert members for this household
+                                if (!empty($item['members'])) {
+                                    $memberRecords = [];
+                                    foreach ($item['members'] as $memberData) {
+                                        if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
+                                            $memberRecords[] = [
+                                                'household_id' => $household->id,
+                                                'role' => $memberData['role'] ?? null,
+                                                'name' => $memberData['name'] ?? null,
+                                                'occupation' => $memberData['occupation'] ?? null,
+                                                'educational_attainment' => $memberData['educational_attainment'] ?? null,
+                                                'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
+                                                'created_at' => now(),
+                                                'updated_at' => now(),
+                                            ];
+                                        }
+                                    }
+                                    if (!empty($memberRecords)) {
+                                        HouseholdMember::insert($memberRecords);
+                                    }
+                                }
+                                $successful++;
+                            } catch (\Exception $e) {
+                                $failed++;
+                                $errors[] = "Row " . ($item['index'] + 1) . ": " . $e->getMessage();
+                            }
+                        }
+                    }
+
+                    // Batch update existing households
+                    if (!empty($householdsToUpdate)) {
+                        foreach ($householdsToUpdate as $item) {
+                            try {
+                                $household = Household::find($item['id']);
+                                if ($household) {
+                                    $household->update($item['data']);
+                                    
+                                    // Delete old members and insert new ones
+                                    HouseholdMember::where('household_id', $household->id)->delete();
+                                    
+                                    if (!empty($item['members'])) {
+                                        $memberRecords = [];
+                                        foreach ($item['members'] as $memberData) {
+                                            if (!empty($memberData['name']) || !empty($memberData['occupation']) || !empty($memberData['educational_attainment'])) {
+                                                $memberRecords[] = [
+                                                    'household_id' => $household->id,
+                                                    'role' => $memberData['role'] ?? null,
+                                                    'name' => $memberData['name'] ?? null,
+                                                    'occupation' => $memberData['occupation'] ?? null,
+                                                    'educational_attainment' => $memberData['educational_attainment'] ?? null,
+                                                    'practicing_family_planning' => $memberData['practicing_family_planning'] ?? false,
+                                                    'created_at' => now(),
+                                                    'updated_at' => now(),
+                                                ];
+                                            }
+                                        }
+                                        if (!empty($memberRecords)) {
+                                            HouseholdMember::insert($memberRecords);
+                                        }
+                                    }
+                                }
+                            } catch (\Exception $e) {
+                                $failed++;
+                                $errors[] = "Update error: " . $e->getMessage();
+                            }
+                        }
+                    }
+                });
+
+                $totalSuccessful += $successful;
+                $totalFailed += $failed;
+                $totalSkipped += $skipped;
+
+                \Log::info("File processed: {$filename}", [
+                    'successful' => $successful,
+                    'failed' => $failed,
+                    'skipped' => $skipped
+                ]);
+
+                $fileResults[] = [
+                    'filename' => $filename,
+                    'stats' => [
+                        'total' => count($households),
+                        'successful' => $successful,
+                        'failed' => $failed,
+                        'skipped' => $skipped,
+                    ],
+                    'errors' => $errors,
+                    'skipped_logs' => $skippedLogs,
+                ];
+            } catch (\Exception $e) {
+                $fileResults[] = [
+                    'filename' => $filename,
+                    'error' => $e->getMessage(),
+                    'stats' => [
+                        'total' => count($households),
+                        'successful' => 0,
+                        'failed' => count($households),
+                        'skipped' => 0,
+                    ],
+                ];
+            }
+        }
+
+        \Log::info('Bulk import completed', [
+            'totalFiles' => count($filesData),
+            'totalSuccessful' => $totalSuccessful,
+            'totalFailed' => $totalFailed,
+            'totalSkipped' => $totalSkipped
+        ]);
+
+        return response()->json([
+            'message' => "Bulk import completed. {$totalSuccessful} successful, {$totalFailed} failed, {$totalSkipped} skipped across " . count($filesData) . " file(s).",
+            'summary' => [
+                'totalFiles' => count($filesData),
+                'totalSuccessful' => $totalSuccessful,
+                'totalFailed' => $totalFailed,
+                'totalSkipped' => $totalSkipped,
+            ],
+            'fileResults' => $fileResults,
+        ]);
     }
 
     /**
@@ -551,7 +881,7 @@ class HouseholdController extends Controller
     {
         $allBarangays = [
             'Baclaran', 'Banay-Banay', 'Banlic', 'Bigaa', 'Butong', 'Casile',
-            'Diezmo', 'Gulod', 'Mamatid', 'Marinig', 'Masiit', 'Niugan', 'Pittland',
+            'Diezmo', 'Gulod', 'Mamatid', 'Marinig', 'Niugan', 'Pittland',
             'Pulo', 'Sala', 'San Isidro', 'Pob. Uno', 'Pob. Dos', 'Pob. Tres'
         ];
 

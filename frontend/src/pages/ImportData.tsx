@@ -27,6 +27,7 @@ interface ChangedHousehold {
 
 const ImportData = () => {
   const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [importStats, setImportStats] = useState<{
@@ -35,10 +36,13 @@ const ImportData = () => {
     failed: number;
     skipped?: number;
   } | null>(null);
+  const [bulkImportResults, setBulkImportResults] = useState<any>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [skippedLogs, setSkippedLogs] = useState<string[]>([]);
   const [templateBarangay, setTemplateBarangay] = useState('');
   const [showAbbreviations, setShowAbbreviations] = useState(false);
+  const [useBulkImport, setUseBulkImport] = useState(false);
+  const [parsingProgress, setParsingProgress] = useState<string>('');
 
   // Change-confirmation state
   const [showChangeModal, setShowChangeModal] = useState(false);
@@ -51,10 +55,22 @@ const ImportData = () => {
   const [parsedHouseholds, setParsedHouseholds] = useState<any[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files).slice(0, 5);
+      
+      if (selectedFiles.length > 1) {
+        setFiles(selectedFiles);
+        setFile(null);
+        setUseBulkImport(true);
+      } else {
+        setFile(selectedFiles[0]);
+        setFiles([]);
+        setUseBulkImport(false);
+      }
+      
       setMessage(null);
       setImportStats(null);
+      setBulkImportResults(null);
       setImportErrors([]);
       setSkippedLogs([]);
     }
@@ -364,7 +380,82 @@ const ImportData = () => {
     return households;
   }
 
+  const handleBulkImport = async () => {
+    if (files.length === 0) {
+      setMessage({ type: 'error', text: 'Please select at least one file to import' });
+      return;
+    }
+
+    setImporting(true);
+    setMessage(null);
+    setImportStats(null);
+    setBulkImportResults(null);
+    setImportErrors([]);
+    setSkippedLogs([]);
+
+    try {
+      console.log('Starting bulk import with', files.length, 'files');
+      
+      // Parse files sequentially instead of in parallel to avoid freezing
+      const parsedFiles = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setParsingProgress(`Parsing files... (${i + 1}/${files.length})`);
+        console.log(`Parsing file ${i + 1}/${files.length}:`, file.name);
+        
+        // Add a small delay to let the UI update
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const households = await parseExcelFile(file);
+        console.log('Parsed', households.length, 'households from', file.name);
+        
+        parsedFiles.push({
+          filename: file.name,
+          households: households
+        });
+      }
+
+      setParsingProgress('Sending data to server...');
+      console.log('Sending to API:', parsedFiles.length, 'files');
+      console.log('Total households:', parsedFiles.reduce((sum, f) => sum + f.households.length, 0));
+
+      const response = await api.post('/households/bulk-import', {
+        files: parsedFiles
+      });
+
+      console.log('API Response:', response.data);
+
+      setBulkImportResults(response.data);
+      setMessage({ 
+        type: 'success', 
+        text: response.data.message || 'Bulk import completed successfully!' 
+      });
+
+      // Reset file inputs
+      setFiles([]);
+      setFile(null);
+      setUseBulkImport(false);
+      const fileInput = document.getElementById('file-input') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+    } catch (error: any) {
+      console.error('Bulk import error:', error);
+      console.error('Error response:', error.response?.data);
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.message || error.message || 'Error during bulk import.',
+      });
+    } finally {
+      setImporting(false);
+      setParsingProgress('');
+    }
+  };
+
   const handleImport = async () => {
+    if (useBulkImport && files.length > 0) {
+      await handleBulkImport();
+      return;
+    }
+
     if (!file) {
       setMessage({ type: 'error', text: 'Please select a file to import' });
       return;
@@ -750,6 +841,79 @@ const ImportData = () => {
         </div>
       )}
 
+      {bulkImportResults && (
+        <div className="import-stats">
+          <h3>Bulk Import Results</h3>
+          <div className="stats-grid">
+            <div className="stat-item">
+              <span className="stat-label">Total Files:</span>
+              <span className="stat-value">{bulkImportResults.summary.totalFiles}</span>
+            </div>
+            <div className="stat-item success">
+              <span className="stat-label">Successful:</span>
+              <span className="stat-value">{bulkImportResults.summary.totalSuccessful}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Skipped:</span>
+              <span className="stat-value">{bulkImportResults.summary.totalSkipped}</span>
+            </div>
+            <div className="stat-item error">
+              <span className="stat-label">Failed:</span>
+              <span className="stat-value">{bulkImportResults.summary.totalFailed}</span>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '20px' }}>
+            <h4>Per-File Results:</h4>
+            {bulkImportResults.fileResults.map((fileResult: any, idx: number) => (
+              <div key={idx} style={{ 
+                marginTop: '15px', 
+                padding: '15px', 
+                background: '#f9f9f9', 
+                borderRadius: '4px',
+                borderLeft: '4px solid #4CAF50'
+              }}>
+                <h5 style={{ margin: '0 0 10px 0' }}>{fileResult.filename}</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', fontSize: '14px' }}>
+                  <div>Total: <strong>{fileResult.stats.total}</strong></div>
+                  <div>Success: <strong>{fileResult.stats.successful}</strong></div>
+                  <div>Failed: <strong>{fileResult.stats.failed}</strong></div>
+                  <div>Skipped: <strong>{fileResult.stats.skipped}</strong></div>
+                </div>
+                
+                {fileResult.errors && fileResult.errors.length > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <strong style={{ color: '#d32f2f' }}>Errors:</strong>
+                    <ul style={{ margin: '5px 0', paddingLeft: '20px', color: '#d32f2f' }}>
+                      {fileResult.errors.slice(0, 5).map((error: string, i: number) => (
+                        <li key={i}>{error}</li>
+                      ))}
+                      {fileResult.errors.length > 5 && (
+                        <li>... and {fileResult.errors.length - 5} more errors</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+                
+                {fileResult.skipped_logs && fileResult.skipped_logs.length > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <strong style={{ color: '#f57c00' }}>Skipped:</strong>
+                    <ul style={{ margin: '5px 0', paddingLeft: '20px', color: '#666' }}>
+                      {fileResult.skipped_logs.slice(0, 3).map((log: string, i: number) => (
+                        <li key={i}>{log}</li>
+                      ))}
+                      {fileResult.skipped_logs.length > 3 && (
+                        <li>... and {fileResult.skipped_logs.length - 3} more skipped</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {skippedLogs.length > 0 && (
         <div className="import-instructions" style={{ marginBottom: '24px' }}>
           <h3>Skipped Duplicate Logs</h3>
@@ -780,7 +944,7 @@ const ImportData = () => {
       <div className="import-content">
         <div className="import-card">
           <h2>Upload File</h2>
-          <p>Select a CSV or Excel file containing household data to import.</p>
+          <p>Select one or multiple Excel files (up to 5) containing household data to import.</p>
 
           <div className="file-upload-area">
             <input
@@ -789,13 +953,31 @@ const ImportData = () => {
               accept=".csv,.xlsx,.xls"
               onChange={handleFileChange}
               className="file-input"
+              multiple
             />
             <label htmlFor="file-input" className="file-label">
-              {file ? file.name : 'Choose file or drag it here'}
+              {files.length > 0 
+                ? `${files.length} file(s) selected` 
+                : file 
+                ? file.name 
+                : 'Choose file(s) or drag them here (max 5)'}
             </label>
           </div>
 
-          {file && (
+          {files.length > 0 && (
+            <div className="file-info">
+              <p><strong>Selected files ({files.length}/5):</strong></p>
+              <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                {files.map((f, idx) => (
+                  <li key={idx}>
+                    {f.name} ({(f.size / 1024).toFixed(2)} KB)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {file && !files.length && (
             <div className="file-info">
               <p><strong>Selected file:</strong> {file.name}</p>
               <p><strong>File size:</strong> {(file.size / 1024).toFixed(2)} KB</p>
@@ -819,9 +1001,13 @@ const ImportData = () => {
             <button
               onClick={handleImport}
               className="import-btn"
-              disabled={!file || importing}
+              disabled={(!file && files.length === 0) || importing}
             >
-              {importing ? 'Importing...' : 'Import Data'}
+              {importing 
+                ? parsingProgress || 'Importing...' 
+                : files.length > 1 
+                ? `Import ${files.length} Files` 
+                : 'Import Data'}
             </button>
             <button
               onClick={downloadTemplate}
@@ -831,6 +1017,19 @@ const ImportData = () => {
               Download Template
             </button>
           </div>
+          
+          {parsingProgress && (
+            <div style={{ 
+              marginTop: '10px', 
+              padding: '10px', 
+              background: '#e3f2fd', 
+              borderRadius: '4px',
+              fontSize: '14px',
+              color: '#1976d2'
+            }}>
+              {parsingProgress}
+            </div>
+          )}
         </div>
 
         <div className="import-instructions">
@@ -852,8 +1051,12 @@ const ImportData = () => {
               <li><strong>Select barangay</strong> then click <strong>Download Template</strong>.</li>
               <li><strong>Open Excel template</strong> and fill row 5–6 header fields.</li>
               <li><strong>Fill household data</strong> using the 3-row format per household.</li>
-              <li><strong>Upload file</strong> and click <strong>Import Data</strong>.</li>
+              <li><strong>Upload file(s)</strong> and click <strong>Import Data</strong>.</li>
             </ol>
+            <p style={{ marginTop: '10px', fontSize: '14px', color: '#666' }}>
+              <strong>Bulk Import:</strong> You can select up to 5 Excel files at once for batch processing. 
+              Simply select multiple files when choosing files to upload.
+            </p>
           </div>
 
           <div className="instruction-block">
