@@ -82,7 +82,6 @@ const BarangaySummary = () => {
     surveyPeriodTo: '',
   });
   const [summary, setSummary] = useState<SurveySummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showAbbreviations, setShowAbbreviations] = useState(false);
   
   const [purokOptionsRaw, setPurokOptionsRaw] = useState<Record<string, string[]>>({});
@@ -122,7 +121,6 @@ const BarangaySummary = () => {
 
   useEffect(() => {
     const fetchSummary = async () => {
-      setLoading(true);
       try {
         const res = await api.post('/households/barangay-summary', filters);
         const s = res.data as SurveySummary;
@@ -150,14 +148,10 @@ const BarangaySummary = () => {
       } catch (e) {
         console.error(e);
         setSummary(emptySummary());
-      } finally {
-        setLoading(false);
       }
     };
     fetchSummary();
   }, [filters]);
-
-  if (loading) return <div className="barangay-summary loading">Loading Family Profile Survey Summary...</div>;
 
   const s = summary || emptySummary();
   const occLabels = ['Manager', 'Professional', 'Technician & Associate Professional', 'Clerical Support Workers', 'Service & Sales Workers', 'Skilled Agri, Forestry & Fishery', 'Craft & Related Workers', 'Plant & Machine Operators', 'Elementary Occupations', 'Armed Forces', 'None'];
@@ -192,14 +186,11 @@ const BarangaySummary = () => {
             <div className="filter-field">
               <label>Barangay Nutrition Scholar</label>
               {hasMultipleBns ? (
-                <select
+                <DownwardSelect
                   value={filters.barangayNutritionScholar}
-                  onChange={(e) => setFilters((f) => ({ ...f, barangayNutritionScholar: e.target.value }))}
-                >
-                  {bnsOptions.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setFilters((f) => ({ ...f, barangayNutritionScholar: v }))}
+                  options={bnsOptions.map((name) => ({ value: name, label: name }))}
+                />
               ) : (
                 <input
                   type="text"

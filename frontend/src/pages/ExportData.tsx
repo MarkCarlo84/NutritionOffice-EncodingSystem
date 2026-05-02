@@ -1008,11 +1008,11 @@ const ExportData = () => {
             <div className="filter-row">
               <label>BNS</label>
               {summaryHasMultipleBns ? (
-                <select value={summaryFilters.bns} onChange={(e) => setSummaryFilters((f) => ({ ...f, bns: e.target.value }))}>
-                  {summaryBnsOptions.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
+                <DownwardSelect
+                  value={summaryFilters.bns}
+                  onChange={(v) => setSummaryFilters((f) => ({ ...f, bns: v }))}
+                  options={summaryBnsOptions.map((name) => ({ value: name, label: name }))}
+                />
               ) : (
                 <input type="text" value={summaryFilters.bns} onChange={(e) => setSummaryFilters((f) => ({ ...f, bns: e.target.value }))} placeholder="Barangay Nutrition Scholar" />
               )}
